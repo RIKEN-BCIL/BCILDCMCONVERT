@@ -15,10 +15,11 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
 ```
 
 ### Dependencies
-[dcm2niix][]
+[dcm2niix][], [pydicom][]
 [HCP pipeline][], [Workbench][], [FSL][]
 
 [dcm2niix]: https://github.com/rordenlab/dcm2niix "dcm2niix"
+[pydicom]: https://github.com/pydicom/pydicom "pydicom"
 [HCP pipeline]: https://github.com/Washington-University/Pipelines "HCP pipeline"
 [Workbench]: https://github.com/Washington-University/workbench "Workbench"
 [FSL]: https://fsl.fmrib.ox.ac.uk/fsl/fslwiki "FSL"
