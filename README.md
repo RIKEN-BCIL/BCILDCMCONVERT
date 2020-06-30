@@ -19,7 +19,7 @@ Outputs are :
 
 
 ``` 
- Usage: python3 bcil_dcm_kspaceinfo.py <DICOM file>
+ Usage: python3 bcil_dcm_kspace_info.py <DICOM file>
  
 ```
 
