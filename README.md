@@ -24,11 +24,11 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
 Example outputs are \<subject dir\> of which structure is:
 
 \<Study dir\>/\<Subject dir\>
- \`--RawData
-    |-- DICOMlist 
-    |-- NIFTI
-    |-- Seriesinfo.csv 
-    \`-- Studyinfo.csv 
+ \`--RawData  
+    |-- DICOMlist   
+    |-- NIFTI  
+    |-- Seriesinfo.csv  
+    \`-- Studyinfo.csv  
 
 
 ``` 
