@@ -35,7 +35,7 @@ Outputs are :
 [dcm2niix][], [pydicom][],
 
 ### Aknowledgements
-Yuta Urushibata
+We thank Yuta Urushibata for his help in analyzing DICOM files
 
 ### License
 BCILDCMCONVERT is licensed under the terms of the MIT license.
