@@ -8,11 +8,15 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
 3. Run bcil_dcm_convert.py in the terminal
 
 ``` 
- Usage: python3 bcil_dcm_convert.py [options] <StudyFolder> <DICOM dir>
+ usage:
  
- Options:
-     -s       :
-     -n       : 
+ ex). $ python3 bcil_dcm_convert.py [option(s)] <Study dir> <Subject DICOM dir>
+ 
+ Compulsory arguments:
+ 
+ 
+ Optional arguments:
+     -s       : 
 ```
 
 Outputs are :
