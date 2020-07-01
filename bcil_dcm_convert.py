@@ -139,6 +139,8 @@ class BcilDcmConvert:
             if self.nifti_convert:
                 self.save_nii(nii_data_path, subject_dir)
 
+            del h
+
     def get_dicom_file_list(self, subject_dir):
 
         regex = r".*\.(ima|dcm|dic|dc3|dicom)"
@@ -154,8 +156,8 @@ class BcilDcmConvert:
 
     def read_dicom_headers(self, file_list):
 
-        study_dict = copy.copy(self.STUDY_DICT)
-        series_dict = copy.copy(self.SERIES_DICT)
+        study_dict = copy.deepcopy(self.STUDY_DICT)
+        series_dict = copy.deepcopy(self.SERIES_DICT)
         log_list = []
         dcm_list = []
 
@@ -182,7 +184,7 @@ class BcilDcmConvert:
             patient_position = ds["0x00185100"].value if "0x00185100" in ds else None
 
             # csa data
-            csa_d = copy.copy(self.CSA_DICT)
+            csa_d = copy.deepcopy(self.CSA_DICT)
             if manufacturer == "SIEMENS":
                 if (not study_dict["StudyUID"] or not (study_uid in study_dict["StudyUID"])) or \
                         (not series_dict["Series UID"] or not (series_uid in series_dict["Series UID"])):
@@ -313,16 +315,16 @@ if __name__ == '__main__':
 
     usage = \
         "\n\n" \
-        "  ex). $ python3 bcil_dcm_convert.py [option(s)] <Study directory to be saved> <Subject DICOM directory>\n" \
+        "  ex). $ python3 bcil_dcm_convert.py [option(s)] <Study dir> <Subject DICOM dir>\n" \
         "\n" \
         "\n" \
         "".format(__file__)
 
     ap = ArgumentParser(usage=usage)
-    ap.add_argument('saveDir', type=str, help='save dir (!!parent dir!!) full path ')
-    ap.add_argument('dcmDir', type=str, help='subject dir full path')
+    ap.add_argument('saveDir', type=str, help='full path to study dir (parent dir) in which a new subject directory will be saved')
+    ap.add_argument('dcmDir', type=str, help='full path to subject dir including DICOM files')
 
-    o_help_txt = "overwrite Studyinfo.txt, Seriesinfo.txt, DICOMlist, DICOMDIrlist and NIFTI in <subject dir>"
+    o_help_txt = "overwrite Studyinfo.txt, Seriesinfo.txt, DICOMlist, DICOMDirlist and NIFTI in <subject dir>"
     ap.add_argument('-o', dest='overwrite', action='store_true', help=o_help_txt)
 
     n_help_txt = 'do not convert to NIFTI'
