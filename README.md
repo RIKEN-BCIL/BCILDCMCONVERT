@@ -34,11 +34,11 @@ Outputs are :
 ### Dependencies
 [dcm2niix][], [pydicom][],
 
-
 ### Aknowledgements
 Yuta Urushibata
 
-
+### License
+BCILDCMCONVERT is licensed under the terms of the MIT license.
 
 [dcm2niix]: https://github.com/rordenlab/dcm2niix "dcm2niix"
 [pydicom]: https://github.com/pydicom/pydicom "pydicom"
