@@ -13,10 +13,12 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
  ex). $ python3 bcil_dcm_convert.py [option(s)] <Study dir> <Subject DICOM dir>
  
  Compulsory arguments:
- 
+     <Study dir>           : full path to study dir (parent dir) in which a new subject directory will be saved
+     <Subject DICOM dir>   : full path to ubject dir including DICOM files 
  
  Optional arguments:
-     -s       : 
+     -s  <Subject dirname> : subject dirname to be created in Study dir (by default, the dirname is automatically created)
+     -o                    : overwrite Studyinfo.txt, Seriesinfo.txt, DICOMlist, DICOMDirlist and NIFTI in <subject dir>
 ```
 
 Outputs are :
