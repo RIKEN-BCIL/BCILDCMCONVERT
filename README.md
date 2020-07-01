@@ -18,7 +18,7 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
  
  Optional arguments:
      -s  <Subject dirname> : subject dirname to be created in Study dir (by default, the dirname is automatically created)
-     -o                    : overwrite Studyinfo.txt, Seriesinfo.txt, DICOMlist, DICOMDirlist and NIFTI in <subject dir>
+     -o                    : overwrite Studyinfo.csv, Seriesinfo.csv, DICOMlist and NIFTI in <subject dir>
 ```
 
 Outputs are :
