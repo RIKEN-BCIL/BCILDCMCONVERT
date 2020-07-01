@@ -226,11 +226,11 @@ Example outputs are \<subject dir\> of which structure is:
 ``` 
  usage:
  
- ex). $ python3 bcil_dcm_kspace_info.py <dicom full path
+ ex). $ python3 bcil_dcm_kspace_info.py <dicom full path>
  
 ```
 
-Outputs are :
+Example output is :
 
 ### Dependencies
 [dcm2niix][], [pydicom][], [dibabel][]
@@ -247,4 +247,4 @@ BCILDCMCONVERT is licensed under the terms of the MIT license.
 
 ### References
 Brain/MINDS Beyond Human Brain MRI Study: A Protocol of Multi-Site Harmonization for Brain Disorders Throughout the Lifespan bioRxiv
-doi: https://doi.org/10.1101/2020.05.05.076273
+https://doi.org/10.1101/2020.05.05.076273
