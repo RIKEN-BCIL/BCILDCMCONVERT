@@ -29,7 +29,7 @@ Example outputs are \<subject dir\> of which structure is:
     |-- DICOMlist   
     |-- NIFTI  
     |-- Seriesinfo.csv  
-    \`-- Studyinfo.csv  
+    `-- Studyinfo.csv  
 ```
 
 
