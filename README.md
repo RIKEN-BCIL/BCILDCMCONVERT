@@ -21,9 +21,9 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
      -o                    : overwrite Studyinfo.csv, Seriesinfo.csv, DICOMlist and NIFTI in <Subject dir>
 ```
 
-Example outputs are <subject dir> of which structure is:
+Example outputs are \<subject dir\> of which structure is:
 
-<Study dir>/<Subject dir>
+\<Study dir\>/\<Subject dir\>
  `--RawData
     |-- DICOMlist 
     |-- NIFTI 
