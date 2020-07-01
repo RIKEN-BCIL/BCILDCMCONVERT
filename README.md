@@ -33,14 +33,6 @@ Example outputs are \<subject dir\> of which structure is:
 ```
 
 
-``` 
- usage:
- 
- ex). $ python3 bcil_dcm_kspace_info.py <dicom full path>
- 
-```
-
-Example output is :
 
 ### Dependencies
 [dcm2niix][], [pydicom][], [dibabel][]
