@@ -32,7 +32,7 @@ Outputs are :
 Outputs are :
 
 ### Dependencies
-[dcm2niix][], [pydicom][],
+[dcm2niix][], [pydicom][], [dibabel][]
 
 ### Aknowledgements
 We thank Yuta Urushibata for his help in analyzing DICOM files
@@ -42,3 +42,4 @@ BCILDCMCONVERT is licensed under the terms of the MIT license.
 
 [dcm2niix]: https://github.com/rordenlab/dcm2niix "dcm2niix"
 [pydicom]: https://github.com/pydicom/pydicom "pydicom"
+[dibabel]: https://github.com/nyurik/dibabel "dibabel"
