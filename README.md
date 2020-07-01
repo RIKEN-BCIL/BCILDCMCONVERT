@@ -24,7 +24,7 @@ Converts DICOM to NIFTI, organizes the data into a study directory, and reads MR
 Example outputs are \<subject dir\> of which structure is:
 
 \<Study dir\>/\<Subject dir\>
- `--RawData
+ \`--RawData
     |-- DICOMlist 
     |-- NIFTI 
     |   |-- DICOM_AAHead_Scout_20190628133307_1.json
@@ -246,5 +246,5 @@ BCILDCMCONVERT is licensed under the terms of the MIT license.
 [dibabel]: https://github.com/nyurik/dibabel "dibabel"
 
 ### References
-Shinsuke Koike, Saori C Tanaka, Tomohisa Okada, Toshihiko Aso, Michiko Asano, Norihide Maikusa, Kentaro Morita, Naohiro Okada, Masaki Fukunaga, Akiko Uematsu, Hiroki Togo, Atsushi Miyazaki, Katsutoshi Murata, Yuta Urushibata, Joonas Autio, Takayuki Ose, Junichiro Yoshimoto, Toshiyuki Araki, Matthew F Glasser, David C Van Essen, Megumi Maruyama, Norihiro Sadato, Mitsuo Kawato, Kiyoto Kasai, Yasumasa Okamoto, Takashi Hanakawa, Takuya Hayashi. Brain/MINDS Beyond Human Brain MRI GroupBrain/MINDS Beyond Human Brain MRI Study: A Protocol of Multi-Site Harmonization for Brain Disorders Throughout the Lifespan bioRxiv
+Shinsuke Koike, Saori C Tanaka, Tomohisa Okada, Toshihiko Aso, Michiko Asano, Norihide Maikusa, Kentaro Morita, Naohiro Okada, Masaki Fukunaga, Akiko Uematsu, Hiroki Togo, Atsushi Miyazaki, Katsutoshi Murata, Yuta Urushibata, Joonas Autio, Takayuki Ose, Junichiro Yoshimoto, Toshiyuki Araki, Matthew F Glasser, David C Van Essen, Megumi Maruyama, Norihiro Sadato, Mitsuo Kawato, Kiyoto Kasai, Yasumasa Okamoto, Takashi Hanakawa, Takuya Hayashi. (2020) Brain/MINDS Beyond Human Brain MRI GroupBrain/MINDS Beyond Human Brain MRI Study: A Protocol of Multi-Site Harmonization for Brain Disorders Throughout the Lifespan bioRxiv
 https://doi.org/10.1101/2020.05.05.076273
