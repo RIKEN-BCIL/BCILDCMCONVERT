@@ -3,8 +3,8 @@
 Converts DICOM to NIFTI, organizes the data into a study directory, and reads MRI scanning params useful for preprocessing brain imaging.
 
 ### Installation and Usage
-1. Download BCILDCMCONVERT.zip and unzip
-2. TO DO
+1. Systtem requirements: linux, python3, nibabel 3.1.0, nanpy 1.16.4 pydicom 2.0.0
+2. Download BCILDCMCONVERT.zip and unzip
 3. Run bcil_dcm_convert.py in the terminal
 
 ``` 
