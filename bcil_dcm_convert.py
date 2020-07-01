@@ -17,6 +17,7 @@ class BcilDcmConvert:
     save_parent_dir = ""
     nifti_convert = False
     overwrite = False
+    subject_name = None
 
     err_mes = []
 
@@ -96,19 +97,25 @@ class BcilDcmConvert:
         self.save_parent_dir = ""
         self.nifti_convert = False
         self.overwrite = False
+        self.subject_name = None
         self.err_mes = []
 
-    def set_params(self, subject_dir_list, save_parent_dir, nifti_convert, overwrite):
+    def set_params(self, subject_dir_list, save_parent_dir, nifti_convert, overwrite, subject_name=None):
         self.subject_dir_list = subject_dir_list
         self.save_parent_dir = save_parent_dir
         self.nifti_convert = nifti_convert
         self.overwrite = overwrite
+        self.subject_name = subject_name
 
     def main(self):
 
         for subject_dir in self.subject_dir_list:
 
             dir_name = os.path.basename(os.path.dirname(subject_dir))
+            if self.subject_name:
+                # single subject only
+                dir_name = self.subject_name
+
             save_path = self.save_parent_dir + dir_name + os.sep
             if not self.overwrite and os.path.isdir(save_path):
                 self.err_mes.append(save_path + ": already exist (skip subject)")
@@ -333,6 +340,7 @@ if __name__ == '__main__':
 
     n_help_txt = 'do not convert to NIFTI'
     ap.add_argument('-n', dest='no_nii', action='store_true', help=n_help_txt)
+    ap.add_argument('-s', dest='subject_name', type=str, help="Subject directory")
     args = ap.parse_args()
 
     save_d = args.saveDir + os.sep if args.saveDir[-1:] != os.sep else args.saveDir
@@ -346,7 +354,7 @@ if __name__ == '__main__':
         exit()
 
     bc = BcilDcmConvert()
-    bc.set_params([dcm_d], save_d, not args.no_nii, args.overwrite)
+    bc.set_params([dcm_d], save_d, not args.no_nii, args.overwrite, args.subject_name)
     bc.main()
 
     if bc.err_mes:
