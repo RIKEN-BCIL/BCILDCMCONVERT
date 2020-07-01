@@ -22,7 +22,7 @@ class BcilDcmKspaceInfo:
 
         manufacturer = self.ds["0x0080070"].value if "0x0080070" in self.ds else None
         if manufacturer != "SIEMENS":
-            self.errors.append("manufacturer: data does not by Siemens")
+            self.errors.append("data is not from Siemens MRI")
             return
 
         with warnings.catch_warnings():
