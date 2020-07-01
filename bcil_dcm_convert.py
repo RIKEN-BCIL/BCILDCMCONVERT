@@ -121,6 +121,10 @@ class BcilDcmConvert:
 
             h = self.read_dicom_headers(file_list)
 
+            if len(h["study_data"]["StudyUID"]) > 1:
+                self.err_mes.append(subject_dir + ": found DICOM with different Study UID. (skip subject)")
+                continue
+
             save_data_path = save_path + self.CSV_SAVE_DIR + os.sep
             if not os.path.isdir(save_data_path):
                 os.makedirs(save_data_path, exist_ok=True)
