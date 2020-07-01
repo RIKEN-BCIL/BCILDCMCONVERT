@@ -34,6 +34,12 @@ Outputs are :
 ### Dependencies
 [dcm2niix][], [pydicom][],
 
+
+### Aknowledgements
+Yuta Urushibata
+
+
+
 [dcm2niix]: https://github.com/rordenlab/dcm2niix "dcm2niix"
 [pydicom]: https://github.com/pydicom/pydicom "pydicom"
 
