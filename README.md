@@ -32,9 +32,9 @@ Example outputs are \<subject dir\> of which structure is:
     `-- Studyinfo.csv  
 ```
 
-Example output NIFTI volumes can been seen [here][]
+Example output NIFTI volumes can been seen at [wiki][]
 
-[here]: https://github.com/RIKEN-BCIL/BCILDCMCONVERT/wiki "here"
+[wiki]: https://github.com/RIKEN-BCIL/BCILDCMCONVERT/wiki "wiki"
 
 
 ### Dependencies
