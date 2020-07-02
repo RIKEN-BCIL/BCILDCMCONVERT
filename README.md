@@ -41,7 +41,7 @@ Detailes of example outputs and contents of Seriesinfo.csv and Studyinfo.csv are
 [dcm2niix][], [pydicom][], [nibabel][]
 
 ### Aknowledgements
-We thank Yuta Urushibata for his help in analyzing DICOM files
+We thank Yuta Urushibata for his help in analyzing DICOM files and verifying by phantom experiments.
 
 ### License
 BCILDCMCONVERT is licensed under the terms of the MIT license.
