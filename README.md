@@ -38,7 +38,7 @@ Example output NIFTI volumes can been seen at [wiki][]
 
 
 ### Dependencies
-[dcm2niix][], [pydicom][], [dibabel][]
+[dcm2niix][], [pydicom][], [nibabel][]
 
 ### Aknowledgements
 We thank Yuta Urushibata for his help in analyzing DICOM files
@@ -48,7 +48,7 @@ BCILDCMCONVERT is licensed under the terms of the MIT license.
 
 [dcm2niix]: https://github.com/rordenlab/dcm2niix "dcm2niix"
 [pydicom]: https://github.com/pydicom/pydicom "pydicom"
-[dibabel]: https://github.com/nyurik/dibabel "dibabel"
+[nibabel]: https://github.com/nipy/nibabel "nibabel"
 
 ### References
 Shinsuke Koike, Saori C Tanaka, Tomohisa Okada, Toshihiko Aso, Michiko Asano, Norihide Maikusa, Kentaro Morita, Naohiro Okada, Masaki Fukunaga, Akiko Uematsu, Hiroki Togo, Atsushi Miyazaki, Katsutoshi Murata, Yuta Urushibata, Joonas Autio, Takayuki Ose, Junichiro Yoshimoto, Toshiyuki Araki, Matthew F Glasser, David C Van Essen, Megumi Maruyama, Norihiro Sadato, Mitsuo Kawato, Kiyoto Kasai, Yasumasa Okamoto, Takashi Hanakawa, Takuya Hayashi. (2020) Brain/MINDS Beyond Human Brain MRI GroupBrain/MINDS Beyond Human Brain MRI Study: A Protocol of Multi-Site Harmonization for Brain Disorders Throughout the Lifespan _**bioRxiv**_  
