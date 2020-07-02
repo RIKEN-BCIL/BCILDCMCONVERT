@@ -32,7 +32,7 @@ Example outputs are \<subject dir\> of which structure is:
     `-- Studyinfo.csv  
 ```
 
-Detailes of example outputs and contents of Seriesinfo.csv and Studyinfo.csv are desribed at [wiki][]
+Detailes of the example outputs and contents of Seriesinfo.csv and Studyinfo.csv are desribed at [wiki][]
 
 [wiki]: https://github.com/RIKEN-BCIL/BCILDCMCONVERT/wiki "wiki"
 
