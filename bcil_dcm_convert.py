@@ -86,7 +86,6 @@ class BcilDcmConvert:
     #
     STUDY_CSV_NAME = "Studyinfo.csv"
     SERIES_CSV_NAME = "Seriesinfo.csv"
-    DCM_DIR_LIST_TXT_NAME = "DICOMDirlist.txt"
     DCM_DIR_TXT_NAME = "DICOMlist.txt"
     LOG_TXT_NAME = "log.txt"
     DCM_2_NIIX_CMD = ["dcm2niix"]
@@ -138,7 +137,6 @@ class BcilDcmConvert:
 
             self.save_study_csv(save_data_path, h["study_data"])
             self.save_series_csv(save_data_path, h["series_data"])
-            self.save_subject_dir_name(save_data_path, subject_dir)
             self.save_dicom_file_name_list(save_data_path, h["dcm_data"])
 
             log_data_path = save_path + self.LOG_SAVE_DIR + os.sep
@@ -288,11 +286,6 @@ class BcilDcmConvert:
         series_df = pandas.DataFrame(series_dict)
         series_df = series_df.sort_values(["00.Number"])
         series_df.to_csv(path, index=False, columns=series_dict)
-
-    def save_subject_dir_name(self, save_data_path, subject_dir_path):
-        path = save_data_path + self.DCM_DIR_LIST_TXT_NAME
-        with open(path, mode='w') as txt_file:
-            txt_file.write(subject_dir_path.rstrip(os.sep))
 
     def save_dicom_file_name_list(self, save_data_path, dcm_list):
         path = save_data_path + self.DCM_DIR_TXT_NAME
