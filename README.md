@@ -46,7 +46,7 @@ Detailes and examples of Seriesinfo.csv, Studyinfo.csv and NIFTI directory are d
 [dcm2niix][], [pydicom][], [nibabel][]
 
 ### Aknowledgements
-We thank Yuta Urushibata for his help in analyzing DICOM files and verifying by phantom experiments.
+We thank Yuta Urushibata for his help in analyzing DICOM files and verifying DICOM info by phantom experiments.
 
 ### License
 BCILDCMCONVERT is licensed under the terms of the MIT license.
