@@ -33,7 +33,7 @@ Example outputs are \<subject dir\> of which structure is as follows:
 ```
 
 - DICOMlist: a text listing input DICOM directories, which may be useful to track the original DICOM data.  
-- NIFTI: sub-directory including all the NIFTI volumes converted from DICOM in the input <Subject DICOM dir>.  
+- NIFTI: sub-directory including all the NIFTI volumes converted from DICOM in the input \<Subject DICOM dir\>.  
 - Seriesinfo.csv: major scanning parameters of each sequnce series. It includes dwell time in read and phase and their directions (in subject's coordinates), which are needed to correct distortion of images.  
 - Studyinfo.csv: information on study, patients, and MRI scanners. It also inludes a type of gradient coil, which is needed when applying non-linear gradient distortion.  
   
