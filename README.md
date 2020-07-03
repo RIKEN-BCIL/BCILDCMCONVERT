@@ -32,7 +32,7 @@ Example outputs are \<subject dir\> of which structure is as follows:
     `-- Studyinfo.csv  
 ```
 
-DICOMlist: list of input DICOM directories  
+DICOMlist: list of input DICOM directories, which may be useful to track the original DICOM data
 NIFTI: sub-directory including all the NIFTI volumes converted from DICOM in the input <Subject DICOM dir>.  
 Seriesinfo.csv: major scanning parameters of each sequnce series.  
 Studyinfo.csv: information on study, patients, and MRI scanners.  
