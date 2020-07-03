@@ -181,7 +181,7 @@ class BcilDcmKspaceInfo:
             return
 
         s = str(self.ds["0x00291020"].value)
-        search_str_st = r'^.*.### ASCCONV BEGIN ###\\n'
+        search_str_st = r'^.*.### ASCCONV BEGIN(.*?)###\\n'
         search_str_en = r'### ASCCONV END ###.*$'
 
         if len(re.findall(search_str_st, s)) == 0:
@@ -190,6 +190,7 @@ class BcilDcmKspaceInfo:
         s = re.sub(search_str_st, "", s, 0, re.MULTILINE)
         s = re.sub(search_str_en, "", s, 0, re.MULTILINE)
         s = re.sub(r'\\n', "\n", s, 0, re.MULTILINE)
+        s = re.sub(r'\\t', "", s, 0, re.MULTILINE)
         ary = s.splitlines()
 
         result = {}
