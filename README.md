@@ -32,7 +32,12 @@ Example outputs are \<subject dir\> of which structure is as follows:
     `-- Studyinfo.csv  
 ```
 
-Detailes of the example outputs and contents of Seriesinfo.csv and Studyinfo.csv are desribed at [wiki][]
+DICOMlist: list of input DICOM directories
+NIFTI: sub-directory including all the NIFTI volumes converted from DICOM in the input <Subject DICOM directory?.
+Seriesinfo.csv: major scanning parameters of each sequnce series.
+Studyinfo.csv: information on study, patients, and MRI scanners.
+
+Detailes and examples of Seriesinfo.csv, Studyinfo.csv and NIFTI directory are desribed at [wiki][]
 
 [wiki]: https://github.com/RIKEN-BCIL/BCILDCMCONVERT/wiki "wiki"
 
