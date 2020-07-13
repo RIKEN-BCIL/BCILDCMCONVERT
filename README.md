@@ -26,7 +26,7 @@ Example outputs are \<subject dir\> of which structure is as follows:
 ```
 <Study dir>/<Subject dir>  
  `--RawData  
-    |-- DICOMlist   
+    |-- DICOMlist.txt   
     |-- NIFTI  
     |-- Seriesinfo.csv  
     `-- Studyinfo.csv  
