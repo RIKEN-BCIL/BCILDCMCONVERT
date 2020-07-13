@@ -31,13 +31,15 @@ class BcilDcmKspaceInfo:
             import nibabel.nicom.csareader as c
             try:
                 csa_img_data = c.get_csa_header(self.ds)
-                self.__real_dwell_time = c.get_scalar(csa_img_data, "RealDwellTime")
-                self.__acquisition_matrix_text = c.get_acq_mat_txt(csa_img_data)
-                self.__bandwidth_per_pixel_phase_encode = c.get_scalar(csa_img_data, "BandwidthPerPixelPhaseEncode")
-                self.__phase_encoding_direction_positive = c.get_scalar(csa_img_data, "PhaseEncodingDirectionPositive")
+                if csa_img_data:
+                    self.__real_dwell_time = c.get_scalar(csa_img_data, "RealDwellTime")
+                    self.__acquisition_matrix_text = c.get_acq_mat_txt(csa_img_data)
+                    self.__bandwidth_per_pixel_phase_encode = c.get_scalar(csa_img_data, "BandwidthPerPixelPhaseEncode")
+                    self.__phase_encoding_direction_positive = c.get_scalar(csa_img_data, "PhaseEncodingDirectionPositive")
 
                 csa_srs_data = c.get_csa_header(self.ds, 'series')
-                self.__coil_for_gradient2 = c.get_scalar(csa_srs_data, "CoilForGradient2")
+                if csa_srs_data:
+                    self.__coil_for_gradient2 = c.get_scalar(csa_srs_data, "CoilForGradient2")
 
             except CSAReadError:
                 self.errors.append("CSA Header Info: acquisition error")
