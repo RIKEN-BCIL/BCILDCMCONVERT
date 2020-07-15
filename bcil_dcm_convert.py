@@ -9,6 +9,7 @@ import pandas
 import pydicom
 from pydicom.errors import InvalidDicomError
 import copy
+import tqdm
 
 
 class BcilDcmConvert:
@@ -18,6 +19,7 @@ class BcilDcmConvert:
     nifti_convert = False
     overwrite = False
     subject_name = None
+    progress = True
 
     err_mes = []
 
@@ -97,18 +99,21 @@ class BcilDcmConvert:
         self.nifti_convert = False
         self.overwrite = False
         self.subject_name = None
+        self.progress = True
         self.err_mes = []
 
-    def set_params(self, subject_dir_list, save_parent_dir, nifti_convert, overwrite, subject_name=None):
+    def set_params(self, subject_dir_list, save_parent_dir, nifti_convert, overwrite, subject_name=None, progress=True):
         self.subject_dir_list = subject_dir_list
         self.save_parent_dir = save_parent_dir
         self.nifti_convert = nifti_convert
         self.overwrite = overwrite
         self.subject_name = subject_name
+        self.progress = progress
 
     def main(self):
 
-        for subject_dir in self.subject_dir_list:
+        for index, subject_dir in tqdm.tqdm(enumerate(self.subject_dir_list), disable=self.progress, desc="subject",
+                                            total=len(self.subject_dir_list), position=0, leave=True, ascii=True):
 
             dir_name = os.path.basename(os.path.dirname(subject_dir))
             if self.subject_name:
@@ -170,8 +175,8 @@ class BcilDcmConvert:
         log_list = []
         dcm_list = []
 
-        for file in file_list:
-
+        for index, file in tqdm.tqdm(enumerate(file_list), disable=self.progress, desc="read DICOM", total=len(file_list),
+                                     position=1, leave=False, ascii=True):
             try:
                 ds = pydicom.read_file(file)
             except InvalidDicomError:
@@ -328,8 +333,10 @@ if __name__ == '__main__':
     ap.add_argument('saveDir', type=str, help='full path to study dir (parent dir) in which a new subject directory will be saved')
     ap.add_argument('dcmDir', type=str, help='full path to subject dir including DICOM files')
 
-    o_help_txt = "overwrite Studyinfo.txt, Seriesinfo.txt, DICOMlist, DICOMDirlist and NIFTI in <subject dir>"
+    o_help_txt = "overwrite Studyinfo.csv, Seriesinfo.csv, DICOMlist.txt and NIFTI in <subject dir>"
     ap.add_argument('-o', dest='overwrite', action='store_true', help=o_help_txt)
+
+    ap.add_argument('-p', dest='progress', action='store_true')
 
     n_help_txt = 'do not convert to NIFTI'
     ap.add_argument('-n', dest='no_nii', action='store_true', help=n_help_txt)
@@ -347,9 +354,8 @@ if __name__ == '__main__':
         exit()
 
     bc = BcilDcmConvert()
-    bc.set_params([dcm_d], save_d, not args.no_nii, args.overwrite, args.subject_name)
+    bc.set_params([dcm_d], save_d, not args.no_nii, args.overwrite, args.subject_name, not args.progress)
     bc.main()
 
     if bc.err_mes:
-        print("##################################")
         print("\n".join(bc.err_mes))
