@@ -211,7 +211,7 @@ if __name__ == '__main__':
 
     usage = \
         "\n\n" \
-        "  ex). $ python3 bcil_dcm_kspace_info.py <dicom full path>\n" \
+        "  ex). $ python3 bcil_dcm_kspace_info.py <DICOM full path>\n" \
         "\n\n" \
         "".format(__file__)
     ap = ArgumentParser(usage=usage)
