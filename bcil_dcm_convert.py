@@ -85,13 +85,15 @@ class BcilDcmConvert:
         "Slice.direction": "None",
     }
 
-    #
     STUDY_CSV_NAME = "Studyinfo.csv"
     SERIES_CSV_NAME = "Seriesinfo.csv"
     DCM_DIR_TXT_NAME = "DICOMlist.txt"
     LOG_TXT_NAME = "log.txt"
-    DCM_2_NIIX_CMD = ["dcm2niix"]
-    DCM_2_NAMING_RULE = r"%s_%p"
+
+    # dcm2niix conf #
+    DCM_2_NIIX_CMD = "dcm2niix" # linux
+    # DCM_2_NIIX_CMD = "C:\\Users\\yourname\\Desktop\\dcm2niix_win\\dcm2niix.exe"  # windows
+    DCM_2_NAMING_RULE = "%s_%p"
 
     def __init__(self):
         self.subject_dir_list = []
@@ -309,18 +311,25 @@ class BcilDcmConvert:
             shutil.rmtree(nii_data_path)
         os.makedirs(nii_data_path, exist_ok=True)
 
-        dcm2niix_path_ary = self.DCM_2_NIIX_CMD
-        dcm_cmd = ':'.join(dcm2niix_path_ary)
-        cmd = dcm_cmd + " -f " + self.DCM_2_NAMING_RULE + " -o " + nii_data_path + " " + subject_dir
+        cmd_ary = [
+            self.DCM_2_NIIX_CMD,
+            "-f",
+            self.DCM_2_NAMING_RULE,
+            "-o",
+            nii_data_path,
+            subject_dir,
+        ]
         try:
-            res = subprocess.check_output([cmd], shell=True)
-        except:
+            res = subprocess.check_output(cmd_ary, shell=True)
+        except Exception as e:
+            print(e)
             print("dcm2niix : failure")
 
 
 if __name__ == '__main__':
 
     from argparse import ArgumentParser
+    import pathlib
 
     usage = \
         "\n\n" \
@@ -343,14 +352,16 @@ if __name__ == '__main__':
     ap.add_argument('-s', dest='subject_name', type=str, help="Subject directory")
     args = ap.parse_args()
 
-    save_d = args.saveDir + os.sep if args.saveDir[-1:] != os.sep else args.saveDir
-    dcm_d = args.dcmDir + os.sep if args.dcmDir[-1:] != os.sep else args.dcmDir
+    save_d = str(pathlib.Path(args.saveDir).resolve())
+    save_d = save_d + os.sep if not save_d.endswith(os.sep) else save_d
+    if not os.path.isdir(save_d):
+        print(save_d + ':not found')
+        exit()
 
+    dcm_d = str(pathlib.Path(args.dcmDir).resolve())
+    dcm_d = dcm_d + os.sep if not dcm_d.endswith(os.sep) else dcm_d
     if not os.path.isdir(dcm_d):
         print(dcm_d + ':not found')
-        exit()
-    if not os.path.isdir(save_d):
-        print(args.saveDir + ':not found')
         exit()
 
     bc = BcilDcmConvert()
