@@ -91,8 +91,7 @@ class BcilDcmConvert:
     LOG_TXT_NAME = "log.txt"
 
     # dcm2niix conf #
-    DCM_2_NIIX_CMD = "dcm2niix" # linux
-    # DCM_2_NIIX_CMD = "C:\\Users\\yourname\\Desktop\\dcm2niix_win\\dcm2niix.exe"  # windows
+    DCM_2_NIIX_CMD = "dcm2niix"  # linux
     DCM_2_NAMING_RULE = "%s_%p"
 
     def __init__(self):
@@ -320,7 +319,7 @@ class BcilDcmConvert:
             subject_dir,
         ]
         try:
-            res = subprocess.check_output(cmd_ary, shell=True)
+            res = subprocess.check_output([' '.join(cmd_ary)], shell=True)  # linux
         except Exception as e:
             print(e)
             print("dcm2niix : failure")
