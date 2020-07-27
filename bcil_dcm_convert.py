@@ -10,6 +10,7 @@ import pydicom
 from pydicom.errors import InvalidDicomError
 import copy
 import tqdm
+import subprocess
 
 
 class BcilDcmConvert:
@@ -92,6 +93,8 @@ class BcilDcmConvert:
 
     # dcm2niix conf #
     DCM_2_NIIX_CMD = "dcm2niix"  # linux
+    # DCM_2_NIIX_CMD = "C:\\Users\\sumika\\Desktop\\dcm2niix_win\\dcm2niix.exe"  # windows
+
     DCM_2_NAMING_RULE = "%s_%p"
 
     def __init__(self):
@@ -114,7 +117,7 @@ class BcilDcmConvert:
     def main(self):
 
         for index, subject_dir in tqdm.tqdm(enumerate(self.subject_dir_list), disable=self.progress, desc="subject",
-                                            total=len(self.subject_dir_list), position=0, leave=True, ascii=True):
+                                            total=len(self.subject_dir_list), leave=True, ascii=True):
 
             dir_name = os.path.basename(os.path.dirname(subject_dir))
             if self.subject_name:
@@ -176,8 +179,8 @@ class BcilDcmConvert:
         log_list = []
         dcm_list = []
 
-        for index, file in tqdm.tqdm(enumerate(file_list), disable=self.progress, desc="read DICOM", total=len(file_list),
-                                     position=1, leave=False, ascii=True):
+        for index, file in tqdm.tqdm(enumerate(file_list), disable=self.progress, desc="read DCM", total=len(file_list),
+                                     leave=True, ascii=True):
             try:
                 ds = pydicom.read_file(file)
             except InvalidDicomError:
@@ -305,24 +308,26 @@ class BcilDcmConvert:
 
     def save_nii(self, nii_data_path, subject_dir):
 
-        import subprocess
-        if os.path.isdir(nii_data_path):
-            shutil.rmtree(nii_data_path)
-        os.makedirs(nii_data_path, exist_ok=True)
+        with tqdm.tqdm(disable=self.progress, desc="converting DCM to NIFTI", total=100, leave=True, ascii=True) as nip:
+            if os.path.isdir(nii_data_path):
+                shutil.rmtree(nii_data_path)
+            os.makedirs(nii_data_path, exist_ok=True)
+            nip.update(1)
 
-        cmd_ary = [
-            self.DCM_2_NIIX_CMD,
-            "-f",
-            self.DCM_2_NAMING_RULE,
-            "-o",
-            nii_data_path,
-            subject_dir,
-        ]
-        try:
-            res = subprocess.check_output([' '.join(cmd_ary)], shell=True)  # linux
-        except Exception as e:
-            print(e)
-            print("dcm2niix : failure")
+            cmd_ary = [
+                self.DCM_2_NIIX_CMD,
+                "-f",
+                self.DCM_2_NAMING_RULE,
+                "-o",
+                nii_data_path,
+                subject_dir,
+            ]
+            try:
+                res = subprocess.run(cmd_ary, stdout=subprocess.PIPE)
+            except Exception as e:
+                print(e)
+                print("dcm2niix : failure")
+            nip.update(99)
 
 
 if __name__ == '__main__':
