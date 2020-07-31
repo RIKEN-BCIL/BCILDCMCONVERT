@@ -198,7 +198,8 @@ class BcilDcmKspaceInfo:
         result = {}
         for asc_line in ary:
             tmp = asc_line.split(r"=")
-            result[tmp[0].strip(" ").strip('"')] = tmp[1].strip(" ").strip('"')
+            if len(tmp) == 2:
+                result[tmp[0].strip(" ").strip('"')] = tmp[1].strip(" ").strip('"')
         return result
 
 
