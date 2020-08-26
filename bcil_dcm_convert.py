@@ -358,13 +358,13 @@ if __name__ == '__main__':
 
     save_d = str(pathlib.Path(args.saveDir).resolve())
     save_d = save_d + os.sep if not save_d.endswith(os.sep) else save_d
-    if not os.path.isdir(save_d):
+    if not os.path.isdir(save_d) or not os.path.exists(save_d):
         print(save_d + ':not found')
         exit()
 
     dcm_d = str(pathlib.Path(args.dcmDir).resolve())
     dcm_d = dcm_d + os.sep if not dcm_d.endswith(os.sep) else dcm_d
-    if not os.path.isdir(dcm_d):
+    if not os.path.isdir(dcm_d) or not os.path.exists(dcm_d):
         print(dcm_d + ':not found')
         exit()
 
