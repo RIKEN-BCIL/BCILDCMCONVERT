@@ -175,6 +175,7 @@ class BcilDcmKspaceInfo:
         ascii_data = self.get_ascii_data()
         if ascii_data and "sProtConsistencyInfo.tBaselineString" in ascii_data:
             return ascii_data["sProtConsistencyInfo.tBaselineString"]
+        self.errors.append("system: not in ascconv")
         return None
 
     def get_ascii_data(self):
@@ -183,21 +184,18 @@ class BcilDcmKspaceInfo:
             return
 
         s = str(self.ds["0x00291020"].value)
-        search_str_st = r'^.*.### ASCCONV BEGIN(.*?)###\\n'
-        search_str_en = r'### ASCCONV END ###.*$'
-
-        if len(re.findall(search_str_st, s)) == 0:
+        m = re.findall(r"((### ASCCONV BEGIN)(.*?)(###\\n))(.*?)(\\n### ASCCONV END ###)", s)
+        if len(m) == 0 or m[0][4] is None:
+            self.errors.append("ascconv: can not find")
             return
 
-        s = re.sub(search_str_st, "", s, 0, re.MULTILINE)
-        s = re.sub(search_str_en, "", s, 0, re.MULTILINE)
-        s = re.sub(r'\\n', "\n", s, 0, re.MULTILINE)
-        s = re.sub(r'\\t', "", s, 0, re.MULTILINE)
-        ary = s.splitlines()
+        tmp = m[0]  # 1つめにHITしたものを利用します。
+        ascconv = re.sub(r'\\n', "\n", tmp[4], 0, re.MULTILINE)
+        ascconv = re.sub(r'\\t', "", ascconv, 0, re.MULTILINE)
 
         result = {}
-        for asc_line in ary:
-            tmp = asc_line.split(r"=")
+        for line in ascconv.splitlines():
+            tmp = line.split(r"=")
             if len(tmp) == 2:
                 result[tmp[0].strip(" ").strip('"')] = tmp[1].strip(" ").strip('"')
         return result
