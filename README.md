@@ -1,6 +1,6 @@
 # BCILDCMCONVERT
 
-Converts DICOM to NIFTI, organizes the data into a study directory, and reads MRI scanning params useful for preprocessing brain imaging with HCP pipeline and FSL.
+Converts DICOM to NIFTI, organizes the data into a study directory, and reads MRI scanning params useful for preprocessing brain imaging data with HCP pipeline and FSL.
 
 ### Installation and Usage
 1. System requirements: linux, python3, nibabel 3.1.0, nampy 1.16.4 pydicom 2.0.0, dcm2niix
