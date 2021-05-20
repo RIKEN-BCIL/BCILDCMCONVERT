@@ -57,5 +57,5 @@ BCILDCMCONVERT is licensed under the terms of the MIT license.
 
 ### References
 Shinsuke Koike, Saori C Tanaka, Tomohisa Okada, Toshihiko Aso, Michiko Asano, Norihide Maikusa, Kentaro Morita, Naohiro Okada, Masaki Fukunaga, Akiko Uematsu, Hiroki Togo, Atsushi Miyazaki, Katsutoshi Murata, Yuta Urushibata, Joonas Autio, Takayuki Ose, Junichiro Yoshimoto, Toshiyuki Araki, Matthew F Glasser, David C Van Essen, Megumi Maruyama, Norihiro Sadato, Mitsuo Kawato, Kiyoto Kasai, Yasumasa Okamoto, Takashi Hanakawa, Takuya Hayashi. (in press) Brain/MINDS beyond human brain MRI project: A protocol for multi-level harmonization across brain disorders throughout the lifespan _**NeuroImage:Clinical**_  
-[doi:10.1016/j.nicl.2021.102600]: https://doi.org/10.1016/j.nicl.2021.102600 "doi:10.1016/j.nicl.2021.102600"
+https://doi.org/10.1016/j.nicl.2021.102600
 
