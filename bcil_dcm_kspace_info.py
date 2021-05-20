@@ -16,6 +16,8 @@ class BcilDcmKspaceInfo:
     __phase_encoding_direction_positive = None
     __coil_for_gradient2 = None
 
+    __ascii_data = None
+
     def __init__(self, dicom_ds):
         self.ds = dicom_ds
         self.errors = []
@@ -40,6 +42,8 @@ class BcilDcmKspaceInfo:
                 csa_srs_data = c.get_csa_header(self.ds, 'series')
                 if csa_srs_data:
                     self.__coil_for_gradient2 = c.get_scalar(csa_srs_data, "CoilForGradient2")
+
+                self.__ascii_data = self.get_ascii_data()
 
             except CSAReadError:
                 self.errors.append("CSA Header Info: acquisition error")
@@ -172,10 +176,16 @@ class BcilDcmKspaceInfo:
         }
 
     def get_system(self):
-        ascii_data = self.get_ascii_data()
-        if ascii_data and "sProtConsistencyInfo.tBaselineString" in ascii_data:
-            return ascii_data["sProtConsistencyInfo.tBaselineString"]
+        # ascii_data = self.get_ascii_data()
+        if self.__ascii_data and "sProtConsistencyInfo.tBaselineString" in self.__ascii_data:
+            return self.__ascii_data["sProtConsistencyInfo.tBaselineString"]
         self.errors.append("system: not in ascconv")
+        return None
+
+    def get_flReferenceAmplitude(self):
+        if self.__ascii_data and "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude" in self.__ascii_data:
+            return self.__ascii_data["sTXSPEC.asNucleusInfo[0].flReferenceAmplitude"]
+        self.errors.append("sTXSPEC.asNucleusInfo[0].flReferenceAmplitude: not in ascconv")
         return None
 
     def get_ascii_data(self):
@@ -231,6 +241,7 @@ if __name__ == '__main__':
         print(args.dicomFullPath)
         print("{}: {}".format("Gradient", k.get_coil_for_gradient2() or "None"))
         print("{}: {}".format("System", k.get_system() or "None"))
+        print("{}: {}".format("flReferenceAmplitude", k.get_flReferenceAmplitude() or "None"))
         print("{}: {}".format("DwelltimeRead", k.get_dwell_time_read() or "None"))
         print("{}: {}".format("DwelltimePhase", k.get_dwell_time_phase() or "None"))
         directions = k.get_directions()

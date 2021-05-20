@@ -72,6 +72,7 @@ class BcilDcmConvert:
         'Phase.direction': [],
         'Slice.direction': [],
         "Patient Position": [],
+        "flReferenceAmplitude": [],
         'Example DICOM': [],
         'Series UID': [],  # SeriesInstanceUID
         'Study UID': [],
@@ -84,6 +85,7 @@ class BcilDcmConvert:
         "Read.direction": "None",
         "Phase.direction": "None",
         "Slice.direction": "None",
+        "flReferenceAmplitude": "None",
     }
 
     STUDY_CSV_NAME = "Studyinfo.csv"
@@ -125,7 +127,7 @@ class BcilDcmConvert:
                 dir_name = self.subject_name
 
             save_path = self.save_parent_dir + dir_name + os.sep
-            if not self.overwrite and os.path.isdir(save_path):
+            if not self.overwrite and os.path.exists(save_path):
                 self.err_mes.append(save_path + ": already exist (skip subject)")
                 continue
 
@@ -141,15 +143,24 @@ class BcilDcmConvert:
                 continue
 
             save_data_path = save_path + self.CSV_SAVE_DIR + os.sep
-            if not os.path.isdir(save_data_path):
+            if not os.path.exists(save_data_path):
                 os.makedirs(save_data_path, exist_ok=True)
+
+            # ex save
+            ex_dicom_save_path = save_data_path + os.sep + "DICOM"
+            new_ex_file = []
+            os.makedirs(ex_dicom_save_path, exist_ok=True)
+            for ex_dicom_path in h["series_data"]['Example DICOM']:
+                shutil.copy(ex_dicom_path, ex_dicom_save_path)
+                new_ex_file.append(ex_dicom_save_path + os.sep + os.path.basename(ex_dicom_path))
+            h["series_data"]['Example DICOM'] = new_ex_file
 
             self.save_study_csv(save_data_path, h["study_data"])
             self.save_series_csv(save_data_path, h["series_data"])
             self.save_dicom_file_name_list(save_data_path, h["dcm_data"])
 
             log_data_path = save_path + self.LOG_SAVE_DIR + os.sep
-            if not os.path.isdir(log_data_path):
+            if not os.path.exists(log_data_path):
                 os.makedirs(log_data_path, exist_ok=True)
             self.save_logs(log_data_path, h["skip_data"])
 
@@ -208,6 +219,7 @@ class BcilDcmConvert:
                         (not series_dict["Series UID"] or not (series_uid in series_dict["Series UID"])):
                     bdki = BcilDcmKspaceInfo(ds)
                     csa_d["system"] = bdki.get_system()
+                    csa_d["flReferenceAmplitude"] = bdki.get_flReferenceAmplitude()
                     csa_d["gradient"] = bdki.get_coil_for_gradient2()
                     csa_d["DwelltimeRead"] = bdki.get_dwell_time_read() or "None"
                     csa_d["DwelltimePhase"] = bdki.get_dwell_time_phase() or "None"
@@ -259,9 +271,15 @@ class BcilDcmConvert:
                 series_dict["Series UID"].append(series_uid)
                 series_dict["Study UID"].append(study_uid)
 
-                rows = ds["0x00280010"].value if "0x00280010" in ds else ""
-                columns = ds["0x00280011"].value if "0x00280011" in ds else ""
-                series_dict["Matrix"].append(str(rows) + " " + str(columns))
+                #rows = ds["0x00280010"].value if "0x00280010" in ds else ""
+                #columns = ds["0x00280011"].value if "0x00280011" in ds else ""
+                #series_dict["Matrix"].append(str(rows) + " " + str(columns))
+
+                matrix_val = ds["0x0051100b"].value if "0x0051100b" in ds else ""
+                if type(matrix_val) is bytes:
+                    matrix_val = matrix_val.decode("utf-8")
+                matrix_val = matrix_val.replace("*", " ").replace("p", "").replace("[", "").replace("]", "")
+                series_dict["Matrix"].append(matrix_val)
 
                 pixel_size_ary = ds["0x00280030"].value if "0x00280030" in ds else []
                 series_dict["Pixel size[mm]"].append(' '.join(map(str, pixel_size_ary)))
@@ -277,6 +295,7 @@ class BcilDcmConvert:
                 series_dict["Read.direction"].append(csa_d["Read.direction"])
                 series_dict["Phase.direction"].append(csa_d["Phase.direction"])
                 series_dict["Slice.direction"].append(csa_d["Slice.direction"])
+                series_dict["flReferenceAmplitude"].append(csa_d["flReferenceAmplitude"])
 
         return {
             "study_data": study_dict,
@@ -309,15 +328,16 @@ class BcilDcmConvert:
     def save_nii(self, nii_data_path, subject_dir):
 
         with tqdm.tqdm(disable=self.progress, desc="converting DCM to NIFTI", total=100, leave=True, ascii=True) as nip:
-            if os.path.isdir(nii_data_path):
-                shutil.rmtree(nii_data_path)
-            os.makedirs(nii_data_path, exist_ok=True)
+            if os.path.exists(nii_data_path) is False:
+                os.makedirs(nii_data_path, exist_ok=True)
             nip.update(1)
 
             cmd_ary = [
                 self.DCM_2_NIIX_CMD,
                 "-f",
                 self.DCM_2_NAMING_RULE,
+                "-w",
+                "1" if self.overwrite is True else "0",
                 "-o",
                 nii_data_path,
                 subject_dir,
