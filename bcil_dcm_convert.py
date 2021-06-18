@@ -73,6 +73,9 @@ class BcilDcmConvert:
         'Slice.direction': [],
         "Patient Position": [],
         "flReferenceAmplitude": [],
+        "Parallel factor": [],
+        "Multi-band factor": [],
+
         'Example DICOM': [],
         'Series UID': [],  # SeriesInstanceUID
         'Study UID': [],
@@ -86,6 +89,8 @@ class BcilDcmConvert:
         "Phase.direction": "None",
         "Slice.direction": "None",
         "flReferenceAmplitude": "None",
+        "Parallel factor": "None",
+        "Multi-band factor": "None",
     }
 
     STUDY_CSV_NAME = "Studyinfo.csv"
@@ -149,10 +154,15 @@ class BcilDcmConvert:
             # ex save
             ex_dicom_save_path = save_data_path + os.sep + "DICOM"
             new_ex_file = []
-            os.makedirs(ex_dicom_save_path, exist_ok=True)
+            if not os.path.exists(ex_dicom_save_path):
+                os.makedirs(ex_dicom_save_path, exist_ok=True)
             for ex_dicom_path in h["series_data"]['Example DICOM']:
-                shutil.copy(ex_dicom_path, ex_dicom_save_path)
-                new_ex_file.append(ex_dicom_save_path + os.sep + os.path.basename(ex_dicom_path))
+                try:
+                    shutil.copy(ex_dicom_path, ex_dicom_save_path)
+                except shutil.SameFileError as e:
+                    continue # DICOMディレクトリのEXファイルを利用してCSVを再生成する場合通ります
+                finally:
+                    new_ex_file.append(ex_dicom_save_path + os.sep + os.path.basename(ex_dicom_path))
             h["series_data"]['Example DICOM'] = new_ex_file
 
             self.save_study_csv(save_data_path, h["study_data"])
@@ -220,6 +230,8 @@ class BcilDcmConvert:
                     bdki = BcilDcmKspaceInfo(ds)
                     csa_d["system"] = bdki.get_system()
                     csa_d["flReferenceAmplitude"] = bdki.get_flReferenceAmplitude()
+                    csa_d["Parallel factor"] = bdki.get_parallel_factor()
+                    csa_d["Multi-band factor"] = bdki.get_multiband_factor()
                     csa_d["gradient"] = bdki.get_coil_for_gradient2()
                     csa_d["DwelltimeRead"] = bdki.get_dwell_time_read() or "None"
                     csa_d["DwelltimePhase"] = bdki.get_dwell_time_phase() or "None"
@@ -296,7 +308,8 @@ class BcilDcmConvert:
                 series_dict["Phase.direction"].append(csa_d["Phase.direction"])
                 series_dict["Slice.direction"].append(csa_d["Slice.direction"])
                 series_dict["flReferenceAmplitude"].append(csa_d["flReferenceAmplitude"])
-
+                series_dict["Parallel factor"].append(csa_d["Parallel factor"])
+                series_dict["Multi-band factor"].append(csa_d["Multi-band factor"])
         return {
             "study_data": study_dict,
             "series_data": series_dict,

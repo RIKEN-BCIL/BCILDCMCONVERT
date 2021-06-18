@@ -175,6 +175,18 @@ class BcilDcmKspaceInfo:
             "Slice.direction": slice_dic[slice_index]["val"] or None,
         }
 
+    def get_parallel_factor(self):
+        if self.__ascii_data and "sPat.lAccelFactPE" in self.__ascii_data:
+            return self.__ascii_data["sPat.lAccelFactPE"]
+        self.errors.append("parallel factor: not in ascconv")
+        return None
+
+    def get_multiband_factor(self):
+        if self.__ascii_data and "sWipMemBlock.alFree[13]" in self.__ascii_data:
+            return self.__ascii_data["sWipMemBlock.alFree[13]"]
+        self.errors.append("multiband factor: not in ascconv")
+        return None
+
     def get_system(self):
         # ascii_data = self.get_ascii_data()
         if self.__ascii_data and "sProtConsistencyInfo.tBaselineString" in self.__ascii_data:
