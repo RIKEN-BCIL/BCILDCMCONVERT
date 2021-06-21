@@ -230,8 +230,8 @@ class BcilDcmConvert:
                     bdki = BcilDcmKspaceInfo(ds)
                     csa_d["system"] = bdki.get_system()
                     csa_d["flReferenceAmplitude"] = bdki.get_flReferenceAmplitude()
-                    csa_d["Parallel factor"] = bdki.get_parallel_factor()
-                    csa_d["Multi-band factor"] = bdki.get_multiband_factor()
+                    csa_d["Parallel factor"] = bdki.get_parallel_factor() or "None"
+                    csa_d["Multi-band factor"] = bdki.get_multiband_factor() or "None"
                     csa_d["gradient"] = bdki.get_coil_for_gradient2()
                     csa_d["DwelltimeRead"] = bdki.get_dwell_time_read() or "None"
                     csa_d["DwelltimePhase"] = bdki.get_dwell_time_phase() or "None"
