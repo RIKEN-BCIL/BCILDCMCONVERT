@@ -1,6 +1,6 @@
 # BCILDCMCONVERT
 
-BCILDCMCONVERT converts DICOM to NIFTI, organizes the data into a study directory, and stores MRI scanning params useful for preprocessing brain imaging data with [HCP pipeline][] and [FSL][]. It achieves high traceability, practicality, and reproducibility needed for high-quality MRI data analysis.
+BCILDCMCONVERT converts DICOM from various MRI scanners to NIFTI volumes, organizes the data into a study directory, and stores MRI scanning params useful for preprocessing brain imaging data with [HCP pipeline][] and [FSL][]. It achieves high traceability, practicality, and reproducibility needed for high-quality MRI data analysis.
 
 [HCP pipeline]: https://github.com/Washington-University/HCPpipelines "HCP pipeline"
 [FSL]: https://fsl.fmrib.ox.ac.uk/fsl "FSL"
