@@ -5,6 +5,10 @@ BCILDCMCONVERT converts DICOM from various MRI scanners to NIFTI volumes, organi
 [HCP pipeline]: https://github.com/Washington-University/HCPpipelines "HCP pipeline"
 [FSL]: https://fsl.fmrib.ox.ac.uk/fsl "FSL"
 
+
+### Supported MRI scanners
+Siemens 3T MRI scanner (MAGNETOME Trio, MAGNETOME Verio, MAGNETOME Skyra, MAGNETOME Prisma)
+
 ### Installation and Usage
 1. System requirements: linux, python3, nibabel 3.1.0, nampy 1.16.4 pydicom 2.0.0, dcm2niix
 2. Download BCILDCMCONVERT.zip and unzip
