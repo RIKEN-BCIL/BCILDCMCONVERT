@@ -1,250 +1,347 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # coding:utf-8
-import os
-import glob
-import re
-import shutil
 from bcil_dcm_kspace_info import BcilDcmKspaceInfo
-import pandas
+import glob
+import logging
+import os
+import pandas as pd
+import platform
 import pydicom
 from pydicom.errors import InvalidDicomError
-import copy
-import tqdm
+import re
+import shutil
 import subprocess
+import sys
+import tqdm
+from typing import Optional, Final, NoReturn
+import zipfile
+import datetime
 
 
 class BcilDcmConvert:
 
-    subject_dir_list = []
-    save_parent_dir = ""
-    nifti_convert = False
-    overwrite = False
-    subject_name = None
-    progress = True
+    init_error = True
 
-    err_mes = []
+    __version__: Final[str] = "3.0.0"
+    last_update: Final[str] = "20220405001"
 
-    LOG_SAVE_DIR = "logs"
-    CSV_SAVE_DIR = "RawData"
-    NII_SAVE_DIR = CSV_SAVE_DIR + os.sep + "NIFTI"
-    STUDY_DICT = {
-        "Patient Name": [],
-        'Patient ID': [],
-        "Patient's Birth date": [],
-        "Patient's Sex": [],
-        "Patient's Age": [],
-        "Patient's Size": [],
-        "Patient's Weight": [],
-        "Patient's Position": [],
-        'Study Date': [],
-        'Study Description': [],
-        'Requesting physician': [],
-        'Station': [],
-        'Manufacturer': [],
-        "Model": [],  # ###### Model
-        'Institution': [],  # ###### Institution
-        'System': [],
-        "Gradient": [],
-        "PatAUSJID": [],
-        'StudyUID': [],
-    }
-    SERIES_DICT = {
-        '00.Number': [],  # SeriesNumber
-        'Time': [],  # SeriesTime
-        'Description': [],  # SeriesDescription
-        'Protocol': [],  # ProtocolName
-        'Scanning Sequence': [],
-        'Sequence Name': [],
+    DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
+    DCM_2_NAMING_RULE: Final[str] = "%s_%p"
 
-        'TR[msec]': [],  # RepetitionTime
-        'TE[msec]': [],  # EchoTime
-        'TI[msec]': [],  # InversionTime
-        'FA[degree]': [],  # FlipAngle
+    def __init__(self,
+                 dcm_dir: str,
+                 save_parent_dir: str,
+                 create_nifti: bool = True,
+                 overwrite: int = 0,
+                 subject_name: Optional[str] = None,
+                 display_progress: bool = False,
+                 gz: bool = False,
+                 unzip_dir: [str] = None):
 
-        'Matrix': [],  # Rows & Columns
-        'Pixel size[mm]': [],  # PixelSpacing
-        'Slice thickness[mm]': [],
-        'Number of averages': [],
-        'Image Type': [],
-        'DwelltimeRead': [],
-        'DwelltimePhase': [],
-        'Read.direction': [],
-        'Phase.direction': [],
-        'Slice.direction': [],
-        "Patient Position": [],
-        "flReferenceAmplitude": [],
-        "Parallel factor": [],
-        "Multi-band factor": [],
+        # args
+        # *unzip dir
+        if unzip_dir is not None and len(unzip_dir) > 0:
+            self.unzip_dir = self.input_path_check(unzip_dir, "unzip_dir")
+            self.unzip_dir = self.unzip_dir + "bcil_dcm_convert_tmp" + os.sep
+        else:
+            self.unzip_dir = os.getcwd() + os.sep + "bcil_dcm_convert_tmp" + os.sep
 
-        'Example DICOM': [],
-        'Series UID': [],  # SeriesInstanceUID
-        'Study UID': [],
-    }
-    CSA_DICT = {
-        "system": None,
-        "gradient": None,
-        "DwelltimeRead": "None",
-        "DwelltimePhase": "None",
-        "Read.direction": "None",
-        "Phase.direction": "None",
-        "Slice.direction": "None",
-        "flReferenceAmplitude": "None",
-        "Parallel factor": "None",
-        "Multi-band factor": "None",
-    }
+        # *save parent dir
+        parent_dir = self.input_path_check(save_parent_dir, "save_parent_dir")
 
-    STUDY_CSV_NAME = "Studyinfo.csv"
-    SERIES_CSV_NAME = "Seriesinfo.csv"
-    DCM_DIR_TXT_NAME = "DICOMlist.txt"
-    LOG_TXT_NAME = "log.txt"
+        # *src dicom dir
+        if zipfile.is_zipfile(dcm_dir):
+            self.dcm_dir = self.unzip_dcm_dir(dcm_dir)
+        else:
+            self.dcm_dir = self.input_path_check(dcm_dir, "dcm_dir")
 
-    # dcm2niix conf #
-    DCM_2_NIIX_CMD = "dcm2niix"  # linux
-    # DCM_2_NIIX_CMD = "C:\\Users\\sumika\\Desktop\\dcm2niix_win\\dcm2niix.exe"  # windows
+        # subject name alias
+        self.dir_name = os.path.basename(os.path.dirname(self.dcm_dir))
+        if subject_name is not None and len(subject_name) > 0:
+            self.dir_name = subject_name
+        subject_dir_full_path = parent_dir + self.dir_name + os.sep
 
-    DCM_2_NAMING_RULE = "%s_%p"
-
-    def __init__(self):
-        self.subject_dir_list = []
-        self.save_parent_dir = ""
-        self.nifti_convert = False
-        self.overwrite = False
-        self.subject_name = None
-        self.progress = True
-        self.err_mes = []
-
-    def set_params(self, subject_dir_list, save_parent_dir, nifti_convert, overwrite, subject_name=None, progress=True):
-        self.subject_dir_list = subject_dir_list
-        self.save_parent_dir = save_parent_dir
-        self.nifti_convert = nifti_convert
+        self.create_nifti = create_nifti
         self.overwrite = overwrite
-        self.subject_name = subject_name
-        self.progress = progress
+        self.un_display_progress = not display_progress
+        self.gz = gz
 
-    def main(self):
+        # path
+        self.save_data_dir_path: Final[str] = subject_dir_full_path + "RawData"
+        self.study_csv_path: Final[str] = self.save_data_dir_path + os.sep + "Studyinfo.csv"
+        self.series_csv_path: Final[str] = self.save_data_dir_path + os.sep + "Seriesinfo.csv"
+        self.dicom_list_path: Final[str] = self.save_data_dir_path + os.sep + "DICOMlist.txt"
+        self.nifti_dir_path: Final[str] = self.save_data_dir_path + os.sep + "NIFTI"
+        self.ex_dicom_dir_path: Final[str] = self.save_data_dir_path + os.sep + "DICOM"
+        save_log_dir_path: Final[str] = subject_dir_full_path + "logs"
+        self.op_log_path: Final[str] = save_log_dir_path + os.sep + "convert.log"
 
-        for index, subject_dir in tqdm.tqdm(enumerate(self.subject_dir_list), disable=self.progress, desc="subject",
-                                            total=len(self.subject_dir_list), leave=True, ascii=True):
+        # log
+        if not os.path.exists(save_log_dir_path):
+            os.makedirs(save_log_dir_path, exist_ok=True)
+            os.chmod(save_log_dir_path, 0o755)
+        self.logger = None
+        self.setup_logger()
 
-            dir_name = os.path.basename(os.path.dirname(subject_dir))
-            if self.subject_name:
-                # single subject only
-                dir_name = self.subject_name
+        # flg
+        self.init_error = False
 
-            save_path = self.save_parent_dir + dir_name + os.sep
-            if not self.overwrite and os.path.exists(save_path):
-                self.err_mes.append(save_path + ": already exist (skip subject)")
-                continue
+    @staticmethod
+    def input_path_check(path: str, path_name: str) -> str:
+        abs_path = str(os.path.abspath(path))
+        if not os.path.isdir(abs_path) or not os.path.exists(abs_path):
+            print(path_name + " not found. (" + path + ")")
+            exit()
+        abs_path += "" if abs_path.endswith(os.sep) else os.sep
+        return abs_path
 
-            file_list = self.get_dicom_file_list(subject_dir)
-            if not file_list:
-                self.err_mes.append(subject_dir + ": dicom file 0. (skip subject)")
-                continue
+    def unzip_dcm_dir(self, dcm_dir: str) -> str:
+        try:
+            with zipfile.ZipFile(dcm_dir, 'r') as zf:
+                if not os.path.exists(self.unzip_dir):
+                    os.makedirs(self.unzip_dir, exist_ok=True)
+                zf.extractall(self.unzip_dir)
+            return self.unzip_dir + os.path.splitext(os.path.basename(dcm_dir))[0] + os.sep
+        except Exception as e:
+            print("unzip failure. (" + dcm_dir + ") exceiption:" + e)
+            exit()
 
-            h = self.read_dicom_headers(file_list)
+    def main(self) -> bool:
 
-            if len(h["study_data"]["StudyUID"]) > 1:
-                self.err_mes.append(subject_dir + ": found DICOM with different Study UID. (skip subject)")
-                continue
+        if self.init_error is True:
+            self.logger.debug("init error.")
+            exit()
 
-            save_data_path = save_path + self.CSV_SAVE_DIR + os.sep
-            if not os.path.exists(save_data_path):
-                os.makedirs(save_data_path, exist_ok=True)
+        self.logger.debug("### main start ###")
 
-            # ex save
-            ex_dicom_save_path = save_data_path + os.sep + "DICOM"
-            new_ex_file = []
-            if not os.path.exists(ex_dicom_save_path):
-                os.makedirs(ex_dicom_save_path, exist_ok=True)
-            for ex_dicom_path in h["series_data"]['Example DICOM']:
-                try:
-                    shutil.copy(ex_dicom_path, ex_dicom_save_path)
-                except shutil.SameFileError as e:
-                    continue # DICOMディレクトリのEXファイルを利用してCSVを再生成する場合通ります
-                finally:
-                    new_ex_file.append(ex_dicom_save_path + os.sep + os.path.basename(ex_dicom_path))
-            h["series_data"]['Example DICOM'] = new_ex_file
+        # overwrite check
+        if (self.overwrite == 0) and os.path.exists(self.save_data_dir_path):
+            self.logger.error(self.save_data_dir_path + ": already exist. do not overwrite.")
+            exit()
 
-            self.save_study_csv(save_data_path, h["study_data"])
-            self.save_series_csv(save_data_path, h["series_data"])
-            self.save_dicom_file_name_list(save_data_path, h["dcm_data"])
+        # read dcm
+        self.logger.debug("##### get_dcm_list #####")
+        dcm_list = self.get_dcm_list()
+        self.logger.debug("##### read_dcm_header #####")
+        (study_df, series_df, used_dcm_list) = self.read_dcm_header(dcm_list)
 
-            log_data_path = save_path + self.LOG_SAVE_DIR + os.sep
-            if not os.path.exists(log_data_path):
-                os.makedirs(log_data_path, exist_ok=True)
-            self.save_logs(log_data_path, h["skip_data"])
+        # mkdir
+        if not os.path.exists(self.save_data_dir_path):
+            os.makedirs(self.save_data_dir_path, exist_ok=True)
+            os.chmod(self.save_data_dir_path, 0o755)
 
-            nii_data_path = save_path + self.NII_SAVE_DIR + os.sep
-            if self.nifti_convert:
-                self.save_nii(nii_data_path, subject_dir)
+        # save files
+        self.logger.debug("##### save files #####")
+        series_df = self.save_ex_dcm(series_df)
+        if self.create_nifti is True:
+            series_df = self.save_nifti(series_df)
+        self.save_study_csv(study_df)
+        self.save_series_csv(series_df)
+        self.save_dicom_file_name_list(used_dcm_list)
 
-            del h
+        self.logger.debug("##### permission_modify #####")
+        self.permission_modify()
 
-    def get_dicom_file_list(self, subject_dir):
+        # unzip dir
+        self.logger.debug("##### delete unzip dir #####")
+        self.delete_unzip_dir()
 
+        self.logger.debug("### main end ###")
+        return True
+
+    #############################################
+
+    def get_dcm_list(self) -> list:
+        # search dcm files > create file list
         regex = r".*\.(ima|dcm|dic|dc3|dicom)"
-        search_src = subject_dir + r"**"
+        search_src = self.dcm_dir + r"**"
         files = [f for f in glob.glob(search_src, recursive=True) if re.search(regex, f, re.IGNORECASE)]
-        add_files = [f for f in glob.glob(search_src, recursive=True) if re.search(r"^\d{8}$", f)]
-        if 0 == len(files) and 0 == len(add_files):
-            return []
-
+        add_files = [f for f in glob.glob(search_src, recursive=True) if re.search(r"\d{8}$", f)]
+        if (0 == len(files)) and (0 == len(add_files)):
+            self.logger.error((self.dcm_dir + ": dcm file 0. (skip subject)"))
+            exit()
         files.extend(add_files)
         files.sort()
         return files
 
-    def read_dicom_headers(self, file_list):
+    def read_dcm_header(self, dcm_list: list) -> tuple:
 
-        study_dict = copy.deepcopy(self.STUDY_DICT)
-        series_dict = copy.deepcopy(self.SERIES_DICT)
-        log_list = []
-        dcm_list = []
+        study_dict = {
+            "Patient Name": [],
+            'Patient ID': [],
+            "Patient's Birth date": [],
+            "Patient's Sex": [],
+            "Patient's Age": [],
+            "Patient's Size": [],
+            "Patient's Weight": [],
+            "Patient's Position": [],
+            'Study Date': [],
+            'Study Description': [],
+            'Requesting physician': [],
+            'Station': [],
+            'Manufacturer': [],
+            "Model": [],
+            'Institution': [],
+            'System': [],
+            "Gradient": [],
+            "PatAUSJID": [],
+            'StudyUID': [],
+        }
+        series_dict = {
+            'Series Number': [],  # SeriesNumber
+            'Time': [],  # SeriesTime
+            'Description': [],  # SeriesDescription
+            'Protocol': [],  # ProtocolName
+            'Scanning Sequence': [],
+            'Sequence Name': [],
 
-        for index, file in tqdm.tqdm(enumerate(file_list), disable=self.progress, desc="read DCM", total=len(file_list),
-                                     leave=True, ascii=True):
+            'TR[msec]': [],  # RepetitionTime
+            'TE[msec]': [],  # EchoTime
+            'TI[msec]': [],  # InversionTime
+            'FA[degree]': [],  # FlipAngle
+
+            'Matrix(phase*read)': [],
+            'Pixel size[mm]': [],  # PixelSpacing
+            'Slice thickness[mm]': [],
+            'Number of averages': [],
+            'Image Type': [],
+            'DwelltimeRead': [],
+            'DwelltimePhase': [],
+            'Read.direction': [],
+            'Phase.direction': [],
+            'Slice.direction': [],
+            "Patient Position": [],
+            "flReferenceAmplitude": [],
+            "Parallel factor": [],
+            "Multi-band factor": [],
+            "PhasePartialFourier": [],
+            "SlicePartialFourier": [],
+
+            'Example DICOM': [],
+            'Series UID': [],  # SeriesInstanceUID
+            'Study UID': [],
+            'NIFTI in RawData': [],
+            'NIFTI in BIDS': [],
+        }
+        used_dcm_list = []
+
+        for index, file in tqdm.tqdm(enumerate(dcm_list), disable=self.un_display_progress, total=len(dcm_list),
+                                     desc="read DCM [" + self.dir_name + "]", leave=True, ascii=True):
+            if os.path.isdir(file):
+                continue
             try:
                 ds = pydicom.read_file(file)
             except InvalidDicomError:
-                log_list.append(file + ':skip(can not read)')
+                self.logger.debug(file + ':skip(can not read)')
                 continue
 
             if 'PixelData' not in ds:
-                log_list.append(file + ':skip(no image)')
+                self.logger.debug(file + ':skip(no image)')
                 continue
 
-            dcm_list.append(file)
+            used_dcm_list.append(file)
+            series_number = str(ds["0x00200011"].value)
+            series_uid = str(ds["0x0020000e"].value)
+            study_uid = str(ds["0x0020000d"].value)
 
-            series_number = ds["0x00200011"].value
-            series_uid = str(ds[0x0020000e].value)
-            study_uid = ds[0x0020000d].value
-            station_name = ds["0x00081010"].value if "0x00081010" in ds else None
-            # instance_number = ds["0x00200013"].value if "0x00200013" in ds else None
-            manufacturer = ds["0x00080070"].value if "0x00080070" in ds else None
-            patient_position = ds["0x00185100"].value if "0x00185100" in ds else None
+            if series_uid in series_dict["Series UID"]:
+                # series_uid が既出の場合は次へスキップ
+                continue
+
+            station_name = str(ds["0x00081010"].value) if "0x00081010" in ds else None
+            manufacturer = str(ds["0x00080070"].value) if "0x00080070" in ds else None
+            patient_position = str(ds["0x00185100"].value) if "0x00185100" in ds else None
 
             # csa data
-            csa_d = copy.deepcopy(self.CSA_DICT)
-            if manufacturer == "SIEMENS":
-                if (not study_dict["StudyUID"] or not (study_uid in study_dict["StudyUID"])) or \
-                        (not series_dict["Series UID"] or not (series_uid in series_dict["Series UID"])):
-                    bdki = BcilDcmKspaceInfo(ds)
-                    csa_d["system"] = bdki.get_system()
-                    csa_d["flReferenceAmplitude"] = bdki.get_flReferenceAmplitude()
-                    csa_d["Parallel factor"] = bdki.get_parallel_factor() or "None"
-                    csa_d["Multi-band factor"] = bdki.get_multiband_factor() or "None"
-                    csa_d["gradient"] = bdki.get_coil_for_gradient2()
-                    csa_d["DwelltimeRead"] = bdki.get_dwell_time_read() or "None"
-                    csa_d["DwelltimePhase"] = bdki.get_dwell_time_phase() or "None"
-                    directions = bdki.get_directions()
-                    csa_d["Read.direction"] = directions["Read.direction"] or "None"
-                    csa_d["Phase.direction"] = directions["Phase.direction"] or "None"
-                    csa_d["Slice.direction"] = directions["Slice.direction"] or "None"
-                    if bdki.errors:
-                        err = map(lambda x: file + x, bdki.errors)
-                        log_list.extend(err)
-                    del bdki
+            if 'SIEMENS' in manufacturer.upper():
+                print(file)
+                bdki = BcilDcmKspaceInfo(ds)
+                directions = bdki.get_directions()
+                system = bdki.get_system()
+                gradient = bdki.get_coil_for_gradient2()
+                dwelltime_read = bdki.get_dwell_time_read() or None
+                dwelltime_phase = bdki.get_dwell_time_phase() or None
+                read_direction = directions["Read.direction"] if "Read.direction" in directions else None
+                phase_direction = directions["Phase.direction"] if "Phase.direction" in directions else None
+                slice_direction = directions["Slice.direction"] if "Slice.direction" in directions else None
+                fl_reference_amplitude = bdki.get_fl_reference_amplitude() or None
+                parallel_factor = bdki.get_parallel_factor() or None
+                multi_band_factor = bdki.get_multiband_factor() or None
+                mri_identifier = bdki.get_mri_identifier() or ""  # "", vida, extend, interoperatabillity
+                uc_flip_angleMode = bdki.get_uc_flip_angle_mode() or None
+                phase_partial_fourier = bdki.get_phase_partial_fourier() or None
+                slice_partial_fourier = bdki.get_slice_partial_fourier() or None
+                if bdki.errors:
+                    for er in bdki.errors:
+                        self.logger.warning(file + ": " + er)
+                del bdki
+            else:
+                system = None
+                gradient = None
+                dwelltime_read = None
+                dwelltime_phase = None
+                read_direction = None
+                phase_direction = None
+                slice_direction = None
+                fl_reference_amplitude = None
+                parallel_factor = None
+                multi_band_factor = None
+                mri_identifier = ""
+                uc_flip_angleMode = None
+                phase_partial_fourier = None
+                slice_partial_fourier = None
+
+            # series
+            ttt = ds["0x00211153"].value if "0x00211153" in ds else "none"
+            print(mri_identifier + "  " + file + "  " + str(ttt))
+
+            variable_data = ""
+            if mri_identifier == "extended":
+                variable_data = self.get_variable_data_extended(ds)
+                if uc_flip_angleMode == "16":
+                    variable_data["FA"] = ""
+            elif mri_identifier == "interoperatabillity":
+                variable_data = self.get_variable_data_interoperatabillity(ds)
+            else:
+                variable_data = self.get_variable_data(ds)
+
+            image_type_ary = ds["0x00080008"].value if "0x00080008" in ds else []
+
+            series_dict["Series Number"].append(series_number)
+            series_dict["Time"].append(ds["0x00080031"].value if "0x00080031" in ds else None)
+            series_dict["Description"].append(ds["0x0008103e"].value if "0x0008103e" in ds else None)
+            series_dict["Protocol"].append(ds["0x00181030"].value if "0x00181030" in ds else None)
+            series_dict["Scanning Sequence"].append(variable_data['Scanning_Sequence'])
+            series_dict["Sequence Name"].append(variable_data['Sequence_Name'])
+            series_dict["TR[msec]"].append(variable_data['TR'])
+            series_dict["TE[msec]"].append(variable_data['TE'])
+            series_dict["TI[msec]"].append(variable_data['TI'])
+            series_dict["FA[degree]"].append(variable_data['FA'])
+            series_dict["Matrix(phase*read)"].append(variable_data['Matrix'])
+            series_dict["Pixel size[mm]"].append(variable_data['Pixel_size'])
+            series_dict["Slice thickness[mm]"].append(variable_data['Slice_thickness'])
+            series_dict["Number of averages"].append(variable_data['Number_of_averages'])
+            series_dict["Image Type"].append(' '.join(map(str, image_type_ary)))
+            series_dict["DwelltimeRead"].append(dwelltime_read or "None")
+            series_dict["DwelltimePhase"].append(dwelltime_phase or "None")
+            series_dict["Patient Position"].append(patient_position or "None")
+            series_dict["Read.direction"].append(read_direction or "None")
+            series_dict["Phase.direction"].append(phase_direction or "None")
+            series_dict["Slice.direction"].append(slice_direction or "None")
+            series_dict["flReferenceAmplitude"].append(fl_reference_amplitude or "None")
+            series_dict["Parallel factor"].append(parallel_factor or "None")
+            series_dict["Multi-band factor"].append(multi_band_factor or "None")
+            series_dict["PhasePartialFourier"].append(phase_partial_fourier or "None")
+            series_dict["SlicePartialFourier"].append(slice_partial_fourier or "None")
+
+            series_dict["Example DICOM"].append(file)
+            series_dict["Series UID"].append(series_uid)
+            series_dict["Study UID"].append(study_uid)
+            series_dict["NIFTI in RawData"].append(None)
+            series_dict["NIFTI in BIDS"].append(None)
+
             # study
-            if not study_dict["StudyUID"] or not (study_uid in study_dict["StudyUID"]):
+            if study_uid not in study_dict["StudyUID"]:
                 study_dict["Patient Name"].append(ds["0x00100010"].value if "0x00100010" in ds else None)
                 study_dict["Patient ID"].append(ds["0x00100020"].value if "0x00100020" in ds else None)
                 study_dict["Patient's Birth date"].append(ds["0x00100030"].value if "0x00100030" in ds else None)
@@ -260,89 +357,166 @@ class BcilDcmConvert:
                 study_dict["Manufacturer"].append(manufacturer)
                 study_dict["Model"].append(ds["0x00081090"].value if "0x00081090" in ds else None)
                 study_dict["Institution"].append(ds["0x00080080"].value if "0x00080080" in ds else None)
+                study_dict["System"].append(system)
+                study_dict["Gradient"].append(gradient)
                 study_dict["StudyUID"].append(study_uid)
                 study_dict["PatAUSJID"].append(ds["0xC0D30011"].value if "0xC0D30011" in ds else None)
 
-                study_dict["System"].append(csa_d["system"])
-                study_dict["Gradient"].append(csa_d["gradient"])
+        # study UID unique check
+        self.unique_study_check(study_dict)
 
-            if not series_dict["Series UID"] or not (series_uid in series_dict["Series UID"]):
-                series_dict["00.Number"].append(series_number)
-                series_dict["Time"].append(ds["0x00080031"].value if "0x00080031" in ds else None)
-                series_dict["Description"].append(ds["0x0008103e"].value if "0x0008103e" in ds else None)
-                series_dict["Protocol"].append(ds["0x00181030"].value if "0x00181030" in ds else None)
-                series_dict["Sequence Name"].append(ds["0x00180024"].value if "0x00180024" in ds else None)
-                series_dict["TR[msec]"].append(ds["0x00180080"].value if "0x00180080" in ds else None)
-                series_dict["TE[msec]"].append(ds["0x00180081"].value if "0x00180081" in ds else None)
-                series_dict["TI[msec]"].append(ds["0x00180082"].value if "0x00180082" in ds else None)
-                series_dict["FA[degree]"].append(ds["0x00181314"].value if "0x00181314" in ds else None)
-                series_dict["Slice thickness[mm]"].append(ds["0x00180050"].value if "0x00180050" in ds else None)
-                series_dict["Number of averages"].append(ds["0x00180083"].value if "0x00180083" in ds else None)
-                series_dict["Patient Position"].append(patient_position)
-                series_dict["Example DICOM"].append(file)
-                series_dict["Series UID"].append(series_uid)
-                series_dict["Study UID"].append(study_uid)
+        return (
+            pd.DataFrame.from_dict(study_dict).astype(str),
+            pd.DataFrame.from_dict(series_dict).astype(str),
+            used_dcm_list
+        )
 
-                #rows = ds["0x00280010"].value if "0x00280010" in ds else ""
-                #columns = ds["0x00280011"].value if "0x00280011" in ds else ""
-                #series_dict["Matrix"].append(str(rows) + " " + str(columns))
-
-                matrix_val = ds["0x0051100b"].value if "0x0051100b" in ds else ""
-                if type(matrix_val) is bytes:
-                    matrix_val = matrix_val.decode("utf-8")
-                matrix_val = matrix_val.replace("*", " ").replace("p", "").replace("[", "").replace("]", "")
-                series_dict["Matrix"].append(matrix_val)
-
-                pixel_size_ary = ds["0x00280030"].value if "0x00280030" in ds else []
-                series_dict["Pixel size[mm]"].append(' '.join(map(str, pixel_size_ary)))
-
-                image_type_ary = ds["0x00080008"].value if "0x00080008" in ds else []
-                series_dict["Image Type"].append(' '.join(map(str, image_type_ary)))
-
-                scanning_sequence_ary = ds["0x00180020"].value if "0x00180020" in ds else []
-                series_dict["Scanning Sequence"].append(''.join(map(str, scanning_sequence_ary)))
-
-                series_dict["DwelltimeRead"].append(csa_d["DwelltimeRead"])
-                series_dict["DwelltimePhase"].append(csa_d["DwelltimePhase"])
-                series_dict["Read.direction"].append(csa_d["Read.direction"])
-                series_dict["Phase.direction"].append(csa_d["Phase.direction"])
-                series_dict["Slice.direction"].append(csa_d["Slice.direction"])
-                series_dict["flReferenceAmplitude"].append(csa_d["flReferenceAmplitude"])
-                series_dict["Parallel factor"].append(csa_d["Parallel factor"])
-                series_dict["Multi-band factor"].append(csa_d["Multi-band factor"])
-        return {
-            "study_data": study_dict,
-            "series_data": series_dict,
-            "skip_data": log_list,
-            "dcm_data": dcm_list
+    @staticmethod
+    def get_variable_data(ds):
+        variable_data = {
+            'Sequence_Name': ds["0x00180024"].value if "0x00180024" in ds else None,
+            'TR': ds["0x00180080"].value if "0x00180080" in ds else "",
+            'TE': ds["0x00180081"].value if "0x00180081" in ds else "",
+            'TI': ds["0x00180082"].value if "0x00180082" in ds else "",
+            'FA': ds["0x00181314"].value if "0x00181314" in ds else "",
+            'Slice_thickness': ds["0x00180050"].value if "0x00180050" in ds else None,
+            'Number_of_averages': ds["0x00180083"].value if "0x00180083" in ds else None,
+            'Matrix': None,
+            'Scanning_Sequence': "",
+            'Pixel_size': "",
         }
+        # Matrix
+        if "0x0051100b" in ds and ds["0x0051100b"].value != "":
+            matrix_val = ds["0x0051100b"].value
+            if type(matrix_val) is bytes:
+                matrix_val = matrix_val.decode("utf-8")
+            elif type(matrix_val) is not str:
+                matrix_val = str(matrix_val)  # GE?
+            matrix_val = matrix_val.replace("[", "").replace("]", "")
+            matrix_val = re.sub('[a-z]', '', matrix_val)
+            variable_data['Matrix'] = matrix_val
 
-    def save_study_csv(self, save_data_path, study_dict):
-        path = save_data_path + self.STUDY_CSV_NAME
-        study_df = pandas.DataFrame(study_dict)
-        study_df.T.to_csv(path, header=False)
+        # Scanning Sequence
+        if "0x00180020" in ds:
+            variable_data['Scanning_Sequence'] = ''.join(map(str, ds["0x00180020"].value))
+        # Pixel size
+        if "0x00280030" in ds:
+            variable_data['Pixel_size'] = ' '.join(map(str, ds["0x00280030"].value))
 
-    def save_series_csv(self, save_data_path, series_dict):
-        path = save_data_path + self.SERIES_CSV_NAME
-        series_df = pandas.DataFrame(series_dict)
-        series_df = series_df.sort_values(["00.Number"])
-        series_df.to_csv(path, index=False, columns=series_dict)
+        return variable_data
 
-    def save_dicom_file_name_list(self, save_data_path, dcm_list):
-        path = save_data_path + self.DCM_DIR_TXT_NAME
-        with open(path, mode='w') as txt_file:
-            txt_file.write('\n'.join(dcm_list))
+    @staticmethod
+    def get_variable_data_extended(ds):
+        variable_data = {
+            'Sequence_Name': ds["0x00189005"].value if "0x00189005" in ds else None,
+            'TR': "",
+            'TE': "",
+            'TI': "",
+            'FA': "",
+            'Slice_thickness': None,
+            'Number_of_averages': None,
+            'Matrix': None,
+            'Scanning_Sequence': "",
+            'Pixel_size': "",
+        }
+        if "0x52009229" in ds:
+            csa9229 = ds["0x52009229"].value[0]
+            if "0x00189112" in csa9229:
+                hdr00189112 = csa9229["0x00189112"].value[0]
+                variable_data['TR'] = hdr00189112["0x00180080"].value if "0x00180080" in hdr00189112 else ""
+                variable_data['FA'] = hdr00189112["0x00181314"].value if "0x00181314" in hdr00189112 else ""
+            if "0x00189115" in csa9229:
+                hdr00189115 = csa9229["0x00189115"].value[0]
+                variable_data['TI'] = hdr00189115["0x00189079"].value if "0x00189079" in hdr00189115 else ""
 
-    def save_logs(self, log_data_path, skip_dicom_list):
-        path = log_data_path + self.LOG_TXT_NAME
-        with open(path, mode='w') as txt_file:
-            txt_file.write('\n'.join(skip_dicom_list))
+        if "0x52009230" in ds:
+            csa9230 = ds["0x52009230"].value[0]
+            if "0x00289110" in csa9230:
+                hdr00289110 = csa9230["0x00289110"].value[0]
+                pixel_size_ary = hdr00289110["0x00280030"].value if "0x00280030" in hdr00289110 else ""
+                variable_data['Pixel_size'] = ' '.join(map(str, pixel_size_ary))
+                variable_data['Slice_thickness'] = hdr00289110["0x00180050"].value if "0x00180050" in hdr00289110 else None
+            if "0x00189119" in csa9230:
+                hdr00189119 = csa9230["0x00189119"].value[0]
+                variable_data['Number_of_averages'] = hdr00189119["0x00180083"].value if "0x00180083" in hdr00189119 else None
+            if "0x00189114" in csa9230:
+                hdr00189114 = csa9230["0x00189114"].value[0]
+                variable_data['TE'] = hdr00189114["0x00189082"].value if "0x00189082" in hdr00189114 else ""
 
-    def save_nii(self, nii_data_path, subject_dir):
+        # Scanning Sequence
+        if "0x00189008" in ds:
+            if ds["0x00189008"].value == "GRADIENT":
+                variable_data['Scanning_Sequence'] = variable_data['Scanning_Sequence'] + "GR "
+            if ds["0x00189008"].value == "SPIN":
+                variable_data['Scanning_Sequence'] = variable_data['Scanning_Sequence'] + "SE "
+        if "0x00189018" in ds:
+            if ds["0x00189018"].value == "YES":
+                variable_data['Scanning_Sequence'] = variable_data['Scanning_Sequence'] + "EPI "
 
-        with tqdm.tqdm(disable=self.progress, desc="converting DCM to NIFTI", total=100, leave=True, ascii=True) as nip:
-            if os.path.exists(nii_data_path) is False:
-                os.makedirs(nii_data_path, exist_ok=True)
+        # Matrix
+        row = ds["0x00280010"].value if "0x00280010" in ds else None
+        col = ds["0x00280011"].value if "0x00280011" in ds else None
+        if row and row:
+            matrix = str(row) + "*" + str(col) if row < col else str(col) + "*" + str(row)
+            variable_data['Matrix'] = matrix
+        return variable_data
+
+    @staticmethod
+    def get_variable_data_interoperatabillity(ds):
+        variable_data = {
+            'Sequence_Name': ds["0x00180024"].value if "0x00180024" in ds else None,
+            'TR': ds["0x00180080"].value if "0x00180080" in ds else "",
+            'TE': ds["0x00180081"].value if "0x00180081" in ds else "",
+            'TI': ds["0x00180082"].value if "0x00180082" in ds else "", ### わからんやつ
+            'FA': ds["0x00181314"].value if "0x00181314" in ds else "",
+            'Slice_thickness': ds["0x00180050"].value if "0x00180050" in ds else None,
+            'Number_of_averages': ds["0x00180083"].value if "0x00180083" in ds else None,
+            'Matrix': None,
+            'Scanning_Sequence': "",
+            'Pixel_size': "",
+        }
+        # Matrix
+        row = ds["0x00280010"].value if "0x00280010" in ds else None
+        col = ds["0x00280011"].value if "0x00280011" in ds else None
+        if row and row:
+            matrix = str(row) + "*" + str(col) if row < col else str(col) + "*" + str(row)
+            variable_data['Matrix'] = matrix
+
+        # Scanning Sequence
+        if "0x00180020" in ds:
+            variable_data['Scanning_Sequence'] = '-'.join(map(str, ds["0x00180020"].value))
+        # Pixel size
+        if "0x00280030" in ds:
+            variable_data['Pixel_size'] = ' '.join(map(str, ds["0x00280030"].value))
+
+        return variable_data
+
+    def save_ex_dcm(self, series_df: pd.DataFrame) -> pd.DataFrame:
+
+        if not os.path.exists(self.ex_dicom_dir_path):
+            os.makedirs(self.ex_dicom_dir_path, exist_ok=True)
+
+        for index, item in series_df.iterrows():
+            save_file_path = item['Example DICOM'].replace(self.dcm_dir, self.ex_dicom_dir_path + os.sep)
+            os.makedirs(os.path.dirname(save_file_path), exist_ok=True)
+            try:
+                shutil.copy(item['Example DICOM'], save_file_path)
+            except shutil.SameFileError as e:
+                self.logger.error("save_example_dicom: failure: " + str(e))
+                continue
+            finally:
+                # new_path = self.ex_dicom_dir_path + os.sep + os.path.basename(item['Example DICOM'])
+                series_df.at[index, "Example DICOM"] = save_file_path
+
+        return series_df
+
+    def save_nifti(self, series_df: pd.DataFrame) -> pd.DataFrame:
+
+        with tqdm.tqdm(disable=self.un_display_progress,
+                       desc="converting DCM to NIFTI", total=100, leave=True, ascii=True) as nip:
+
+            if os.path.exists(self.nifti_dir_path) is False:
+                os.makedirs(self.nifti_dir_path, exist_ok=True)
             nip.update(1)
 
             cmd_ary = [
@@ -350,60 +524,162 @@ class BcilDcmConvert:
                 "-f",
                 self.DCM_2_NAMING_RULE,
                 "-w",
-                "1" if self.overwrite is True else "0",
-                "-o",
-                nii_data_path,
-                subject_dir,
+                "1" if (self.overwrite != 0) else "0",
+                "-o", self.nifti_dir_path
             ]
+            if self.gz is True:
+                cmd_ary.append("-z")
+                cmd_ary.append("y")
+            cmd_ary.append(self.dcm_dir)
             try:
-                res = subprocess.run(cmd_ary, stdout=subprocess.PIPE)
+                subprocess.run(cmd_ary, stdout=subprocess.PIPE)
             except Exception as e:
-                print(e)
-                print("dcm2niix : failure")
+                self.logger.error(("dcm2niix: failure:" + str(e)))
+
             nip.update(99)
+
+        # 処理追加
+        nifti_files = glob.glob(self.nifti_dir_path + os.sep + "*.nii")
+        nifti_files.extend(glob.glob(self.nifti_dir_path + os.sep + "*.nii.gz"))
+
+        for nifti in nifti_files:
+            series_number = nifti.replace(self.nifti_dir_path + os.sep, "").split("_")[0]
+            search = series_df.loc[(series_df['Series Number'] == series_number)]
+            if len(search) > 0:
+                idx = search.index[0]
+                if series_df.at[idx, 'NIFTI in RawData'] == "None":
+                    series_df.at[idx, 'NIFTI in RawData'] = nifti
+                else:
+                    series_df.at[idx, 'NIFTI in RawData'] += r" " + nifti
+
+        return series_df
+
+    def permission_modify(self) -> bool:
+        # permission check & mod
+        for file in glob.glob(self.save_data_dir_path + os.sep + r'**', recursive=True):
+            os.chmod(file, 0o755)
+        os.chmod(self.op_log_path, 0o755)
+        return True
+
+    #############################################
+
+    def setup_logger(self):
+        self.logger = logging.getLogger("bcil_dcm_convert." + self.dir_name + "." + datetime.datetime.now().isoformat())
+        self.logger.setLevel(logging.DEBUG)
+
+        fh = logging.FileHandler(filename=self.op_log_path, mode='a')
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)8s %(message)s"))
+        self.logger.addHandler(fh)
+
+        self.logger.info("/*** " + __name__ + " start ***/")
+        self.logger.info("CMD: " + " ".join(sys.argv))
+        self.logger.info("OS: " + platform.platform())
+        self.logger.info("python: " + sys.version.replace("\n", ""))
+        self.logger.info(__name__ + ":" + self.__version__ + " last update." + self.last_update)
+        if self.create_nifti is True:
+            try:
+                res = subprocess.run([self.DCM_2_NIIX_CMD, "-v"], stdout=subprocess.PIPE)
+                self.logger.info("dcm2niix: " + str(res.stdout.splitlines()[-1]))
+            except Exception as e:
+                self.logger.error("dcm2niix failure: " + str(e))
+                exit(1)
+
+    def unique_study_check(self, study_dict: dict) -> NoReturn:
+
+        if len(study_dict["StudyUID"]) > 1:
+            self.logger.error("multiple study UID error.")
+            self.logger.error("found " + len(study_dict["StudyUID"]) + " study UID.")
+            for std_uid in study_dict["StudyUID"]:
+                self.logger.error("study UID:" + std_uid)
+            exit()
+
+        # overwrite: append (new study UID != old study UID)
+        default_study_uid = None
+        if (self.overwrite == 2) and os.path.exists(self.study_csv_path):
+            tmp = pd.read_csv(self.study_csv_path, header=None, index_col=0)
+            default_study_uid = tmp[1]["StudyUID"]  # get csv study UID
+
+        if (default_study_uid is not None) and (default_study_uid != study_dict["StudyUID"][0]):
+            self.logger.error("multiple study UID error.")
+            self.logger.error("in RawData study UID: " + default_study_uid)
+            self.logger.error("in dcm source study UID[" + study_dict["StudyUID"][0])
+            exit()
+
+    def save_study_csv(self, study_df: pd.DataFrame) -> NoReturn:
+        if (self.overwrite == 2) and (os.path.exists(self.study_csv_path)):
+            # 追記の場合 重複を削除して追記する
+            tmp = pd.read_csv(self.study_csv_path, header=None, index_col=0)
+            tmp = tmp.where(tmp.notnull(), None)
+            study_df = pd.concat([study_df, tmp.T]).drop_duplicates(subset=['StudyUID'])
+        study_df.T.to_csv(self.study_csv_path, header=False)
+
+    def save_series_csv(self, series_df: pd.DataFrame) -> NoReturn:
+        if (self.overwrite == 2) and (os.path.exists(self.series_csv_path)):
+            # 追記の場合 重複を削除して追記する
+            tmp = pd.read_csv(self.series_csv_path, index_col=0)
+            tmp = tmp.where(tmp.notnull(), None)
+            series_df = pd.concat([series_df, tmp]).drop_duplicates(subset=['Series UID', 'Study UID'])
+        series_df["Series Number"] = series_df["Series Number"].astype('uint')
+        series_df = series_df.sort_values(["Series Number"])
+        series_df.to_csv(self.series_csv_path, index=False)
+
+    def save_dicom_file_name_list(self, used_dcm_list: list) -> NoReturn:
+        if (self.overwrite == 2) and (os.path.exists(self.dicom_list_path)):
+            f = open(self.dicom_list_path, 'r')
+            tmp = f.readlines()
+            f.close()
+            tmp.extend(used_dcm_list)
+            used_dcm_list = set(tmp)
+        with open(self.dicom_list_path, mode='w') as txt_file:
+            txt_file.write('\n'.join(used_dcm_list))
+
+    def delete_unzip_dir(self) -> NoReturn:
+        if os.path.exists(self.unzip_dir):
+            shutil.rmtree(self.unzip_dir)
 
 
 if __name__ == '__main__':
 
     from argparse import ArgumentParser
-    import pathlib
-
     usage = \
         "\n\n" \
-        "  ex). $ python3 bcil_dcm_convert.py [option(s)] <Study dir> <Subject DICOM dir>\n" \
+        "  ex). $ python3 bcil_dcm_convert.py [option(s)] <saveDir> <dcmDir>\n" \
         "\n" \
         "\n" \
         "".format(__file__)
 
     ap = ArgumentParser(usage=usage)
-    ap.add_argument('saveDir', type=str, help='full path to study dir (parent dir) in which a new subject directory will be saved')
-    ap.add_argument('dcmDir', type=str, help='full path to subject dir including DICOM files')
+    # required
+    ap.add_argument(
+        'saveDir', type=str, help='path to study dir (parent dir) in which a new subject directory will be saved')
+    ap.add_argument(
+        'dcmDir', type=str, help='path to subject dir including DICOM files')
 
-    o_help_txt = "overwrite Studyinfo.csv, Seriesinfo.csv, DICOMlist.txt and NIFTI in <subject dir>"
-    ap.add_argument('-o', dest='overwrite', action='store_true', help=o_help_txt)
-
-    ap.add_argument('-p', dest='progress', action='store_true')
-
-    n_help_txt = 'do not convert to NIFTI'
-    ap.add_argument('-n', dest='no_nii', action='store_true', help=n_help_txt)
-    ap.add_argument('-s', dest='subject_name', type=str, help="Subject directory")
+    # optional
+    ap.add_argument('-p', '--progress', dest='progress', action='store_true', help='show progress bar')
+    ap.add_argument('-n', '--no_nii', dest='no_nii', action='store_true', help='do not convert to NIFTI')
+    ap.add_argument('-s', dest='subject_name', type=str,
+                    help="give an alias to the subject directory", metavar="subject name")
+    w_help_txt = "<num>   overwrite options (0:do not overwrite, 1:replace, 2:append, default is 0)"
+    ap.add_argument('-w', dest='overwrite_behavior', type=int, help=w_help_txt, default=0, metavar="overwrite option")
+    ap.add_argument('-z', '--gz', dest='gz', action='store_true',
+                    help='compress NIFTI volumes with .gz (default is not compressed, and saved as .nii)')  # gzオプション
+    u_help_txt = "path to unzip dir. unzipped files will be deleted after processing. default is current dir"
+    ap.add_argument('-u', dest='unzip_dir', type=str, help=u_help_txt, metavar="unzip_dir_path")
     args = ap.parse_args()
 
-    save_d = str(pathlib.Path(args.saveDir).resolve())
-    save_d = save_d + os.sep if not save_d.endswith(os.sep) else save_d
-    if not os.path.isdir(save_d) or not os.path.exists(save_d):
-        print(save_d + ':not found')
-        exit()
+    ###########################
 
-    dcm_d = str(pathlib.Path(args.dcmDir).resolve())
-    dcm_d = dcm_d + os.sep if not dcm_d.endswith(os.sep) else dcm_d
-    if not os.path.isdir(dcm_d) or not os.path.exists(dcm_d):
-        print(dcm_d + ':not found')
-        exit()
+    bc = BcilDcmConvert(
+        dcm_dir=args.dcmDir,
+        save_parent_dir=args.saveDir,
+        create_nifti=not args.no_nii,
+        overwrite=args.overwrite_behavior,
+        subject_name=args.subject_name,
+        display_progress=args.progress,
+        gz=args.gz,
+        unzip_dir=args.unzip_dir,
+    )
+    if bc.main() is True:
+        print("complete!")
 
-    bc = BcilDcmConvert()
-    bc.set_params([dcm_d], save_d, not args.no_nii, args.overwrite, args.subject_name, not args.progress)
-    bc.main()
-
-    if bc.err_mes:
-        print("\n".join(bc.err_mes))
