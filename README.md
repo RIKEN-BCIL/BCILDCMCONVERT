@@ -15,17 +15,23 @@ Siemens 3T MRI scanner (MAGNETOME Trio, MAGNETOME Verio, MAGNETOME Skyra, MAGNET
 3. Run bcil_dcm_convert.py in the terminal
 
 ``` 
- usage:
- 
- ex). $ bcil_dcm_convert.py [option(s)] <Study dir> <Subject DICOM dir>
- 
- Compulsory arguments:
-     <Study dir>           : full path to Study dir (parent dir) in which a new subject directory will be saved
-     <Subject DICOM dir>   : full path to Subject dir including DICOM files 
- 
- Optional arguments:
-     -s  <Subject dirname> : subject dirname to be created in Study dir (by default, the dirname is automatically created)
-     -o                    : overwrite Studyinfo.csv, Seriesinfo.csv, DICOMlist and NIFTI in <Subject dir>
+usage:
+
+  ex). $ python3 bcil_dcm_convert.py [option(s)] <saveDir> <dcmDir>
+
+positional arguments:
+  saveDir              path to study dir (parent dir) in which a new subject directory will be saved
+  dcmDir               path to subject dir including DICOM files
+
+optional arguments:
+  -h, --help           show this help message and exit
+  -p, --progress       show progress bar
+  -n, --no_nii         do not convert to NIFTI
+  -s subject name      give an alias to the subject directory
+  -w overwrite option  <num> overwrite options (0:do not overwrite, 1:replace, 2:append, default is 0)
+  -z, --gz             compress NIFTI volumes with .gz (default is not compressed, and saved as .nii)
+  -u unzip_dir_path    path to unzip dir. unzipped files will be deleted after processing. default is current dir
+
 ```
 
 Example outputs are \<subject dir\> of which structure is as follows:
