@@ -22,8 +22,8 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.0.0"
-    last_update: Final[str] = "20220405001"
+    __version__: Final[str] = "3.0.2"
+    last_update: Final[str] = "20230105001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
     DCM_2_NAMING_RULE: Final[str] = "%s_%p"
@@ -38,33 +38,63 @@ class BcilDcmConvert:
                  gz: bool = False,
                  unzip_dir: [str] = None):
 
-        # args
-        # *unzip dir
-        if unzip_dir is not None and len(unzip_dir) > 0:
-            self.unzip_dir = self.input_path_check(unzip_dir, "unzip_dir")
-            self.unzip_dir = self.unzip_dir + "bcil_dcm_convert_tmp" + os.sep
-        else:
-            self.unzip_dir = os.getcwd() + os.sep + "bcil_dcm_convert_tmp" + os.sep
+        self.create_nifti = create_nifti
+        self.overwrite = overwrite
+        self.un_display_progress = not display_progress
+        self.gz = gz
 
         # *save parent dir
-        parent_dir = self.input_path_check(save_parent_dir, "save_parent_dir")
+        parent_dir = str(os.path.abspath(save_parent_dir))
+        if not os.path.isdir(parent_dir) or not os.path.exists(parent_dir):
+            print("<Folder to save> not found. (" + save_parent_dir + ")")
+            exit()
+        parent_dir += "" if parent_dir.endswith(os.sep) else os.sep
 
-        # *src dicom dir
-        if zipfile.is_zipfile(dcm_dir):
-            self.dcm_dir = self.unzip_dcm_dir(dcm_dir)
+        # *src dicom (dir or zip)
+        src = str(os.path.abspath(dcm_dir))
+        if not os.path.exists(src):  # not found
+            print("<input subject's dcm folder or dcm.zip> not found. (" + dcm_dir + ")")
+            exit()
+        elif zipfile.is_zipfile(src):  # zip file
+
+            unzip_parent = os.path.dirname(src) if unzip_dir is None else str(os.path.abspath(unzip_dir))
+            if not os.path.isdir(unzip_parent) or not os.path.exists(unzip_parent):
+                print("<Folder to unzip> not found. (" + unzip_dir + ")")
+                exit()
+
+            #  bcil_dcm_convert_folder/bcil_dcm_convert_folder/'%Y%m%d_%H%M%S/zip名/のフォルダに解凍する
+            unzip_parent += "" if unzip_parent.endswith(os.sep) else os.sep
+            unzip_parent += "bcil_dcm_convert_folder" + os.sep
+
+            zn = os.path.splitext(os.path.basename(src))[0]
+            unzip_path = unzip_parent + datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + os.sep + zn + os.sep
+            try_count = 0
+            while not os.path.exists(unzip_path):
+                try:
+                    os.makedirs(unzip_path, exist_ok=True)
+                    try_count += 1
+                except Exception as e:
+                    print("Unable to create folder at specified location. retry. (" + unzip_path + ") ")
+                    unzip_path = unzip_parent + datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + os.sep + zn + os.sep
+                    continue
+                if try_count > 10:  # 10回mkdir失敗したらやめる。
+                    print("Unable to create folder at specified location. (" + unzip_parent + ") Stop processing.")
+                    exit()
+            self.dcm_dir = self.unzip_exec(src, unzip_path)
+
+        elif os.path.isdir(src):  # directory
+            src += "" if src.endswith(os.sep) else os.sep
+            self.dcm_dir = src
+
         else:
-            self.dcm_dir = self.input_path_check(dcm_dir, "dcm_dir")
+            print("<input subject's dcm folder or dcm.zip> is not folder and not zip file. (" + dcm_dir + ")")
+            exit()
 
         # subject name alias
         self.dir_name = os.path.basename(os.path.dirname(self.dcm_dir))
         if subject_name is not None and len(subject_name) > 0:
             self.dir_name = subject_name
         subject_dir_full_path = parent_dir + self.dir_name + os.sep
-
-        self.create_nifti = create_nifti
-        self.overwrite = overwrite
-        self.un_display_progress = not display_progress
-        self.gz = gz
 
         # path
         self.save_data_dir_path: Final[str] = subject_dir_full_path + "RawData"
@@ -86,24 +116,15 @@ class BcilDcmConvert:
         # flg
         self.init_error = False
 
-    @staticmethod
-    def input_path_check(path: str, path_name: str) -> str:
-        abs_path = str(os.path.abspath(path))
-        if not os.path.isdir(abs_path) or not os.path.exists(abs_path):
-            print(path_name + " not found. (" + path + ")")
-            exit()
-        abs_path += "" if abs_path.endswith(os.sep) else os.sep
-        return abs_path
-
-    def unzip_dcm_dir(self, dcm_dir: str) -> str:
+    def unzip_exec(self, dcm_dir: str, unzip_path: str) -> str:
         try:
-            with zipfile.ZipFile(dcm_dir, 'r') as zf:
-                if not os.path.exists(self.unzip_dir):
-                    os.makedirs(self.unzip_dir, exist_ok=True)
-                zf.extractall(self.unzip_dir)
-            return self.unzip_dir + os.path.splitext(os.path.basename(dcm_dir))[0] + os.sep
+            with zipfile.ZipFile(dcm_dir, "r") as zf:
+                for file in tqdm.tqdm(disable=self.un_display_progress, desc="unzip file",
+                                      leave=True, ascii=True, iterable=zf.namelist(), total=len(zf.namelist())):
+                    zf.extract(member=file, path=unzip_path)
+            return unzip_path
         except Exception as e:
-            print("unzip failure. (" + dcm_dir + ") exceiption:" + e)
+            print("unzip failure. (" + dcm_dir + ") exception:" + e)
             exit()
 
     def main(self) -> bool:
@@ -144,8 +165,6 @@ class BcilDcmConvert:
 
         # unzip dir
         self.logger.debug("##### delete unzip dir #####")
-        self.delete_unzip_dir()
-
         self.logger.debug("### main end ###")
         return True
 
@@ -254,7 +273,6 @@ class BcilDcmConvert:
 
             # csa data
             if 'SIEMENS' in manufacturer.upper():
-                print(file)
                 bdki = BcilDcmKspaceInfo(ds)
                 directions = bdki.get_directions()
                 system = bdki.get_system()
@@ -292,10 +310,6 @@ class BcilDcmConvert:
                 slice_partial_fourier = None
 
             # series
-            ttt = ds["0x00211153"].value if "0x00211153" in ds else "none"
-            print(mri_identifier + "  " + file + "  " + str(ttt))
-
-            variable_data = ""
             if mri_identifier == "extended":
                 variable_data = self.get_variable_data_extended(ds)
                 if uc_flip_angleMode == "16":
@@ -493,12 +507,9 @@ class BcilDcmConvert:
 
     def save_ex_dcm(self, series_df: pd.DataFrame) -> pd.DataFrame:
 
-        if not os.path.exists(self.ex_dicom_dir_path):
-            os.makedirs(self.ex_dicom_dir_path, exist_ok=True)
-
         for index, item in series_df.iterrows():
             save_file_path = item['Example DICOM'].replace(self.dcm_dir, self.ex_dicom_dir_path + os.sep)
-            os.makedirs(os.path.dirname(save_file_path), exist_ok=True)
+            os.makedirs(save_file_path, exist_ok=True)
             try:
                 shutil.copy(item['Example DICOM'], save_file_path)
             except shutil.SameFileError as e:
@@ -633,17 +644,21 @@ class BcilDcmConvert:
         with open(self.dicom_list_path, mode='w') as txt_file:
             txt_file.write('\n'.join(used_dcm_list))
 
-    def delete_unzip_dir(self) -> NoReturn:
-        if os.path.exists(self.unzip_dir):
-            shutil.rmtree(self.unzip_dir)
-
 
 if __name__ == '__main__':
 
     from argparse import ArgumentParser
     usage = \
+        "\n" \
+        "BCILDCMCONVERT converts DICOM from various MRI scanners to NIFTI volumes, " \
+        "organizes the data into a study directory, and stores MRI scanning params useful for preprocessing " \
+        "brain imaging data with HCP pipeline and FSL. (For details, see https://github.com/RIKEN-BCIL/BCILDCMCONVERT) " \
         "\n\n" \
-        "  ex). $ python3 bcil_dcm_convert.py [option(s)] <saveDir> <dcmDir>\n" \
+        " Ex 1). Use an input of directory containing DICOM files\n" \
+        " $ python3 bcil_dcm_convert.py [option(s)] <Folder to save> <input subject's dcm folder>\n" \
+        "\n" \
+        " Ex 2). Use zipped file as an input of DICOM files\n" \
+        " $ python3 bcil_dcm_convert.py [option(s)] <Folder to save> <input subject's dcm.zip>\n" \
         "\n" \
         "\n" \
         "".format(__file__)
@@ -651,28 +666,46 @@ if __name__ == '__main__':
     ap = ArgumentParser(usage=usage)
     # required
     ap.add_argument(
-        'saveDir', type=str, help='path to study dir (parent dir) in which a new subject directory will be saved')
+        '<Folder to save>',
+        type=str,
+        help='path to parent folder in which a new subject folder will be saved')
     ap.add_argument(
-        'dcmDir', type=str, help='path to subject dir including DICOM files')
+        '<input subject\'s dcm folder or dcm.zip>',
+        type=str,
+        help='path to input folder or zipped file containing a subject\'s DICOM files')
 
     # optional
-    ap.add_argument('-p', '--progress', dest='progress', action='store_true', help='show progress bar')
-    ap.add_argument('-n', '--no_nii', dest='no_nii', action='store_true', help='do not convert to NIFTI')
-    ap.add_argument('-s', dest='subject_name', type=str,
-                    help="give an alias to the subject directory", metavar="subject name")
-    w_help_txt = "<num>   overwrite options (0:do not overwrite, 1:replace, 2:append, default is 0)"
-    ap.add_argument('-w', dest='overwrite_behavior', type=int, help=w_help_txt, default=0, metavar="overwrite option")
-    ap.add_argument('-z', '--gz', dest='gz', action='store_true',
+    ap.add_argument('-p', '--progress',
+                    dest='progress', action='store_true', help='show progress bar')
+    ap.add_argument('-n', '--no_nii',
+                    dest='no_nii', action='store_true', help='do not convert to NIFTI')
+    ap.add_argument('-s',
+                    dest='subject_name', type=str,
+                    help="give an alias to the subject folder",
+                    metavar="<subject folder name>")
+    ap.add_argument('-w',
+                    dest='overwrite_behavior', type=int,
+                    help=" overwrite options (0: do not overwrite, 1: replace, 2: append, default is 0)",
+                    default=0, metavar="overwrite option <num>")
+    ap.add_argument('-z', '--gz',
+                    dest='gz', action='store_true',
                     help='compress NIFTI volumes with .gz (default is not compressed, and saved as .nii)')  # gzオプション
-    u_help_txt = "path to unzip dir. unzipped files will be deleted after processing. default is current dir"
-    ap.add_argument('-u', dest='unzip_dir', type=str, help=u_help_txt, metavar="unzip_dir_path")
+    u_help_txt = "path to unzip directory when using an input of zip file "
+    u_help_txt += "(default is the same parent folder of dcm.zip with folder name of bcil_dcm_convert_folder/<date>-<time>)"
+    ap.add_argument('-u',
+                    dest='unzip_dir', type=str,
+                    help=u_help_txt,
+                    metavar="<Folder to unzip>")
+    ap.add_argument('-v', '--version',
+                    action='version', version=BcilDcmConvert.__version__,
+                    help="print version number")
     args = ap.parse_args()
 
     ###########################
 
     bc = BcilDcmConvert(
-        dcm_dir=args.dcmDir,
-        save_parent_dir=args.saveDir,
+        dcm_dir=args.__getattribute__("<input subject's dcm folder or dcm.zip>"),  #args.dcmDir,
+        save_parent_dir=args.__getattribute__("<Folder to save>"),  #args.saveDir,
         create_nifti=not args.no_nii,
         overwrite=args.overwrite_behavior,
         subject_name=args.subject_name,
