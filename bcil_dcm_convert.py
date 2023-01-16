@@ -22,11 +22,11 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.0.2"
-    last_update: Final[str] = "20230105001"
+    __version__: Final[str] = "3.0.3"
+    last_update: Final[str] = "20230116001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
-    DCM_2_NAMING_RULE: Final[str] = "%s_%p"
+    DCM_2_NAMING_RULE: Final[str] = "%s_%d"
 
     def __init__(self,
                  dcm_dir: str,
@@ -675,8 +675,8 @@ if __name__ == '__main__':
         help='path to input folder or zipped file containing a subject\'s DICOM files')
 
     # optional
-    ap.add_argument('-p', '--progress',
-                    dest='progress', action='store_true', help='show progress bar')
+    #ap.add_argument('-p', '--progress',
+    #                dest='progress', action='store_true', help='show progress bar')
     ap.add_argument('-n', '--no_nii',
                     dest='no_nii', action='store_true', help='do not convert to NIFTI')
     ap.add_argument('-s',
@@ -709,7 +709,7 @@ if __name__ == '__main__':
         create_nifti=not args.no_nii,
         overwrite=args.overwrite_behavior,
         subject_name=args.subject_name,
-        display_progress=args.progress,
+        display_progress=True,
         gz=args.gz,
         unzip_dir=args.unzip_dir,
     )
