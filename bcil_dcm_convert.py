@@ -22,8 +22,8 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.0.3"
-    last_update: Final[str] = "20230116001"
+    __version__: Final[str] = "3.0.4"
+    last_update: Final[str] = "20230118001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
     DCM_2_NAMING_RULE: Final[str] = "%s_%d"
@@ -130,21 +130,21 @@ class BcilDcmConvert:
     def main(self) -> bool:
 
         if self.init_error is True:
-            self.logger.debug("init error.")
+            self.logger.debug("Error : init error.")
             exit()
-
-        self.logger.debug("### main start ###")
 
         # overwrite check
         if (self.overwrite == 0) and os.path.exists(self.save_data_dir_path):
-            self.logger.error(self.save_data_dir_path + ": already exist. do not overwrite.")
+            self.logger.error("Error : " + self.save_data_dir_path + ": already exist. do not overwrite.")
             exit()
 
         # read dcm
-        self.logger.debug("##### get_dcm_list #####")
+        self.logger.debug("Start: get_dcm_list")
         dcm_list = self.get_dcm_list()
-        self.logger.debug("##### read_dcm_header #####")
+        self.logger.debug("End: get_dcm_list (" + str(len(dcm_list)) + " files.)")
+        self.logger.debug("Start: read_dcm_header")
         (study_df, series_df, used_dcm_list) = self.read_dcm_header(dcm_list)
+        self.logger.debug("End: read_dcm_header (" + str(len(series_df)) + " series. " + str(len(used_dcm_list)) + " files.)")
 
         # mkdir
         if not os.path.exists(self.save_data_dir_path):
@@ -152,7 +152,6 @@ class BcilDcmConvert:
             os.chmod(self.save_data_dir_path, 0o755)
 
         # save files
-        self.logger.debug("##### save files #####")
         series_df = self.save_ex_dcm(series_df)
         if self.create_nifti is True:
             series_df = self.save_nifti(series_df)
@@ -160,12 +159,11 @@ class BcilDcmConvert:
         self.save_series_csv(series_df)
         self.save_dicom_file_name_list(used_dcm_list)
 
-        self.logger.debug("##### permission_modify #####")
+        self.logger.debug("Changing: permission of files")
         self.permission_modify()
 
         # unzip dir
-        self.logger.debug("##### delete unzip dir #####")
-        self.logger.debug("### main end ###")
+        self.logger.info("############## END BCIL_DCM_CONVERT ##############")
         return True
 
     #############################################
@@ -177,7 +175,7 @@ class BcilDcmConvert:
         files = [f for f in glob.glob(search_src, recursive=True) if re.search(regex, f, re.IGNORECASE)]
         add_files = [f for f in glob.glob(search_src, recursive=True) if re.search(r"\d{8}$", f)]
         if (0 == len(files)) and (0 == len(add_files)):
-            self.logger.error((self.dcm_dir + ": dcm file 0. (skip subject)"))
+            self.logger.error("Error : " + self.dcm_dir + ": dcm file not found.")
             exit()
         files.extend(add_files)
         files.sort()
@@ -251,11 +249,11 @@ class BcilDcmConvert:
             try:
                 ds = pydicom.read_file(file)
             except InvalidDicomError:
-                self.logger.debug(file + ':skip(can not read)')
+                self.logger.debug("skip file (can not read) : " + file)
                 continue
 
             if 'PixelData' not in ds:
-                self.logger.debug(file + ':skip(no image)')
+                self.logger.debug("skip file (no image) : " + file)
                 continue
 
             used_dcm_list.append(file)
@@ -290,8 +288,9 @@ class BcilDcmConvert:
                 phase_partial_fourier = bdki.get_phase_partial_fourier() or None
                 slice_partial_fourier = bdki.get_slice_partial_fourier() or None
                 if bdki.errors:
+                    self.logger.warning("Warning : BCIL_KSPACE_INFO : " + file)
                     for er in bdki.errors:
-                        self.logger.warning(file + ": " + er)
+                        self.logger.warning("> " + er)
                 del bdki
             else:
                 system = None
@@ -513,7 +512,7 @@ class BcilDcmConvert:
             try:
                 shutil.copy(item['Example DICOM'], save_file_path)
             except shutil.SameFileError as e:
-                self.logger.error("save_example_dicom: failure: " + str(e))
+                self.logger.error("Error : save_example_dicom: " + str(e))
                 continue
             finally:
                 # new_path = self.ex_dicom_dir_path + os.sep + os.path.basename(item['Example DICOM'])
@@ -523,6 +522,7 @@ class BcilDcmConvert:
 
     def save_nifti(self, series_df: pd.DataFrame) -> pd.DataFrame:
 
+        dcm2niix_error = []
         with tqdm.tqdm(disable=self.un_display_progress,
                        desc="converting DCM to NIFTI", total=100, leave=True, ascii=True) as nip:
 
@@ -542,12 +542,30 @@ class BcilDcmConvert:
                 cmd_ary.append("-z")
                 cmd_ary.append("y")
             cmd_ary.append(self.dcm_dir)
-            try:
-                subprocess.run(cmd_ary, stdout=subprocess.PIPE)
-            except Exception as e:
-                self.logger.error(("dcm2niix: failure:" + str(e)))
 
-            nip.update(99)
+            self.logger.info("Start: dcm2niix")
+            try:
+                ret = subprocess.run(cmd_ary, capture_output=True, text=True, check=True)
+                for s in list(filter(None, ret.stdout.split("\n"))):
+                    self.logger.info(s)
+                for s in list(filter(None, ret.stderr.split("\n"))):
+                    self.logger.error(s)
+
+            except subprocess.CalledProcessError as e:
+                for s in list(filter(None, e.stdout.split("\n"))):
+                    self.logger.info(s)
+                for s in list(filter(None, e.stderr.split("\n"))):
+                    self.logger.error(s)
+                    dcm2niix_error.append(s)
+
+            except Exception as e:
+                self.logger.error("Error: dcm2niix: " + str(e))
+            finally:
+                nip.update(99)
+                self.logger.info("End: dcm2niix")
+
+        for e in dcm2niix_error:
+            print("dcm2niix: " + e)
 
         # 処理追加
         nifti_files = glob.glob(self.nifti_dir_path + os.sep + "*.nii")
@@ -579,26 +597,26 @@ class BcilDcmConvert:
         self.logger.setLevel(logging.DEBUG)
 
         fh = logging.FileHandler(filename=self.op_log_path, mode='a')
-        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)8s %(message)s"))
+        fh.setFormatter(logging.Formatter("%(asctime)s : %(message)s"))
         self.logger.addHandler(fh)
 
-        self.logger.info("/*** " + __name__ + " start ***/")
+        self.logger.info("############# START BCIL_DCM_CONVERT #############")
         self.logger.info("CMD: " + " ".join(sys.argv))
         self.logger.info("OS: " + platform.platform())
         self.logger.info("python: " + sys.version.replace("\n", ""))
-        self.logger.info(__name__ + ":" + self.__version__ + " last update." + self.last_update)
+        self.logger.info("BCIL_DCM_CONVERT:" + self.__version__ + " last update." + self.last_update)
         if self.create_nifti is True:
             try:
                 res = subprocess.run([self.DCM_2_NIIX_CMD, "-v"], stdout=subprocess.PIPE)
-                self.logger.info("dcm2niix: " + str(res.stdout.splitlines()[-1]))
+                self.logger.info("dcm2niix: " + res.stdout.splitlines()[-1].decode('UTF-8'))
             except Exception as e:
-                self.logger.error("dcm2niix failure: " + str(e))
+                self.logger.error("Error : dcm2niix failure: " + str(e))
                 exit(1)
 
     def unique_study_check(self, study_dict: dict) -> NoReturn:
 
         if len(study_dict["StudyUID"]) > 1:
-            self.logger.error("multiple study UID error.")
+            self.logger.error("Error: multiple study UID error.")
             self.logger.error("found " + len(study_dict["StudyUID"]) + " study UID.")
             for std_uid in study_dict["StudyUID"]:
                 self.logger.error("study UID:" + std_uid)
@@ -611,9 +629,9 @@ class BcilDcmConvert:
             default_study_uid = tmp[1]["StudyUID"]  # get csv study UID
 
         if (default_study_uid is not None) and (default_study_uid != study_dict["StudyUID"][0]):
-            self.logger.error("multiple study UID error.")
-            self.logger.error("in RawData study UID: " + default_study_uid)
-            self.logger.error("in dcm source study UID[" + study_dict["StudyUID"][0])
+            self.logger.error("Error: multiple study UID.")
+            self.logger.error("RawData study UID: " + default_study_uid)
+            self.logger.error("dcm source study UID: " + study_dict["StudyUID"][0])
             exit()
 
     def save_study_csv(self, study_df: pd.DataFrame) -> NoReturn:
@@ -623,6 +641,7 @@ class BcilDcmConvert:
             tmp = tmp.where(tmp.notnull(), None)
             study_df = pd.concat([study_df, tmp.T]).drop_duplicates(subset=['StudyUID'])
         study_df.T.to_csv(self.study_csv_path, header=False)
+        self.logger.debug("Saving: StudyInfo.csv")
 
     def save_series_csv(self, series_df: pd.DataFrame) -> NoReturn:
         if (self.overwrite == 2) and (os.path.exists(self.series_csv_path)):
@@ -633,6 +652,7 @@ class BcilDcmConvert:
         series_df["Series Number"] = series_df["Series Number"].astype('uint')
         series_df = series_df.sort_values(["Series Number"])
         series_df.to_csv(self.series_csv_path, index=False)
+        self.logger.debug("Saving: SeriesInfo.csv")
 
     def save_dicom_file_name_list(self, used_dcm_list: list) -> NoReturn:
         if (self.overwrite == 2) and (os.path.exists(self.dicom_list_path)):
@@ -643,6 +663,7 @@ class BcilDcmConvert:
             used_dcm_list = set(tmp)
         with open(self.dicom_list_path, mode='w') as txt_file:
             txt_file.write('\n'.join(used_dcm_list))
+        self.logger.debug("Saving: DCM file list")
 
 
 if __name__ == '__main__':
@@ -709,7 +730,7 @@ if __name__ == '__main__':
         create_nifti=not args.no_nii,
         overwrite=args.overwrite_behavior,
         subject_name=args.subject_name,
-        display_progress=True,
+        display_progress=True,  #fix
         gz=args.gz,
         unzip_dir=args.unzip_dir,
     )
