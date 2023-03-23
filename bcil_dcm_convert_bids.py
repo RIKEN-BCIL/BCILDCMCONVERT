@@ -20,7 +20,6 @@ if __name__ == "__main__":
             The anonymizer option no longer exists from the script in this release
             It is still possible to deface the anatomical nifti images
             Please add "defaceTpl" key in the congifuration file
-    
             For example, if you use the last version of pydeface, add:
             "defaceTpl": "pydeface --outfile {dstFile} {srcFile}"
             It is a template string and dcm2bids will replace {srcFile} and {dstFile}
@@ -50,22 +49,17 @@ if __name__ == "__main__":
             subject_name = app.participant.name
             tmp_dir = app_dir + "tmp_dcm2bids" + os.sep + app.participant.name
 
-        dirs = app.dicomDirs
-        del app
-
-        for srcDir in dirs:
-            num = 0
-
-            bc = BcilDcmConvert(
-                dcm_dir=srcDir + os.sep,
-                save_parent_dir=convert_save_dir,
-                create_nifti=True,
-                subject_name=subject_name,
-                overwrite=2,
-                display_progress=False,
-                gz=True,
-            )
-            bc.main()
+        bc = BcilDcmConvert(
+            dcm_dir_list=app.dicomDirs,
+            save_parent_dir=convert_save_dir,
+            create_nifti=True,
+            subject_name=subject_name,
+            overwrite=2,
+            display_progress=True,
+            gz=True,
+            working_folder=convert_save_dir,
+        )
+        bc.main()
 
         bids_nifti_hash_list = {}
         sub_dir = (convert_save_dir + subject_name + os.sep)
