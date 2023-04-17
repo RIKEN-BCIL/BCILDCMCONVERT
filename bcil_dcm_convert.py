@@ -25,8 +25,8 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.1.0"
-    last_update: Final[str] = "20230315001"
+    __version__: Final[str] = "3.1.1"
+    last_update: Final[str] = "20230405001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
     DCM_2_NAMING_RULE: Final[str] = "%s_%d"
@@ -195,7 +195,7 @@ class BcilDcmConvert:
     def main(self) -> bool:
 
         if self.logger is None:
-            self.close("init error.")
+            self.close("Error : init error.")
             return False
 
         try:
@@ -281,7 +281,8 @@ class BcilDcmConvert:
             for src in src_list:
                 for folder in [src]:
                     for root, dirs, files in os.walk(top=folder):
-                        for file in files:
+                        s_files = sorted(files)
+                        for file in s_files:
                             if file.endswith((".ima", ".dcm", ".dic", ".dc3", ".dicom")) \
                                     or (file.isalnum() and len(file) == 8):  # 指定拡張子or拡張子なし8文字の英数ファイル名
                                 file_full_path = os.path.join(root, file)
@@ -331,44 +332,21 @@ class BcilDcmConvert:
                 manufacturer = str(ds["0x00080070"].value) if "0x00080070" in ds else None
                 patient_position = str(ds["0x00185100"].value) if "0x00185100" in ds else None
 
-                # csa data
+                # kspace info
+                mri_identifier = gradient = system = dwelltime_read = dwelltime_phase = None
+                read_direction = phase_direction = slice_direction = fl_reference_amplitude = None
+                parallel_factor = multiband_factor = uc_flip_angle_mode = phase_partial_fourier = None
+                slice_partial_fourier = None
+
                 if 'SIEMENS' in manufacturer.upper():
-                    bdki = BcilDcmKspaceInfo(ds)
-                    directions = bdki.get_directions()
-                    system = bdki.get_system()
-                    gradient = bdki.get_coil_for_gradient2()
-                    dwelltime_read = bdki.get_dwell_time_read() or None
-                    dwelltime_phase = bdki.get_dwell_time_phase() or None
-                    read_direction = directions["Read.direction"] if "Read.direction" in directions else None
-                    phase_direction = directions["Phase.direction"] if "Phase.direction" in directions else None
-                    slice_direction = directions["Slice.direction"] if "Slice.direction" in directions else None
-                    fl_reference_amplitude = bdki.get_fl_reference_amplitude() or None
-                    parallel_factor = bdki.get_parallel_factor() or None
-                    multi_band_factor = bdki.get_multiband_factor() or None
-                    mri_identifier = bdki.get_mri_identifier() or ""  # "", vida, extend, interoperatabillity
-                    uc_flip_angle_mode = bdki.get_uc_flip_angle_mode() or None
-                    phase_partial_fourier = bdki.get_phase_partial_fourier() or None
-                    slice_partial_fourier = bdki.get_slice_partial_fourier() or None
-                    if bdki.errors:
-                        self.logger.warning("Warning : BCIL_KSPACE_INFO : " + file)
-                        for er in bdki.errors:
-                            self.logger.warning("> " + er)
-                    del bdki
-                else:
-                    system = None
-                    gradient = None
-                    dwelltime_read = None
-                    dwelltime_phase = None
-                    read_direction = None
-                    phase_direction = None
-                    slice_direction = None
-                    fl_reference_amplitude = None
-                    parallel_factor = None
-                    multi_band_factor = None
-                    mri_identifier = ""
-                    uc_flip_angle_mode = None
-                    phase_partial_fourier = None
-                    slice_partial_fourier = None
+                    k = BcilDcmKspaceInfo(file)
+                    k.setup_file_logger(self.work_path.log_txt)
+                    k.main()
+                    (mri_identifier, gradient, system, dwelltime_read, dwelltime_phase,
+                     read_direction, phase_direction, slice_direction, fl_reference_amplitude,
+                     parallel_factor, multiband_factor, uc_flip_angle_mode, phase_partial_fourier,
+                     slice_partial_fourier,) = k.output
+                    del k
 
                 # series
                 if mri_identifier == "extended":
@@ -396,17 +374,17 @@ class BcilDcmConvert:
                     "Slice thickness[mm]": variable_data['Slice_thickness'],
                     "Number of averages": variable_data['Number_of_averages'],
                     "Image Type": ' '.join(map(str, ds["0x00080008"].value if "0x00080008" in ds else [])),
-                    "DwelltimeRead": dwelltime_read or None,
-                    "DwelltimePhase": dwelltime_phase or None,
-                    "Patient Position": patient_position or None,
-                    "Read.direction": read_direction or None,
-                    "Phase.direction": phase_direction or None,
-                    "Slice.direction": slice_direction or None,
-                    "flReferenceAmplitude": fl_reference_amplitude or None,
-                    "Parallel factor": parallel_factor or None,
-                    "Multi-band factor": multi_band_factor or None,
-                    "PhasePartialFourier": phase_partial_fourier or None,
-                    "SlicePartialFourier": slice_partial_fourier or None,
+                    "DwelltimeRead": dwelltime_read,
+                    "DwelltimePhase": dwelltime_phase,
+                    "Patient Position": patient_position,
+                    "Read.direction": read_direction,
+                    "Phase.direction": phase_direction,
+                    "Slice.direction": slice_direction,
+                    "flReferenceAmplitude": fl_reference_amplitude,
+                    "Parallel factor": parallel_factor,
+                    "Multi-band factor": multiband_factor,
+                    "PhasePartialFourier": phase_partial_fourier,
+                    "SlicePartialFourier": slice_partial_fourier,
                     "Total Count of DICOMs": 0,
                     "Example DICOM": file,
                     "Series UID": series_uid,
@@ -546,14 +524,17 @@ class BcilDcmConvert:
                 variable_data['TE'] = hdr00189114["0x00189082"].value if "0x00189082" in hdr00189114 else None
 
         # Scanning Sequence
+        ss_ary = []
         if "0x00189008" in ds:
             if ds["0x00189008"].value == "GRADIENT":
-                variable_data['Scanning_Sequence'] = str(variable_data['Scanning_Sequence']) + "GR "
+                ss_ary.append("GR")
             if ds["0x00189008"].value == "SPIN":
-                variable_data['Scanning_Sequence'] = str(variable_data['Scanning_Sequence']) + "SE "
+                ss_ary.append("SE")
         if "0x00189018" in ds:
             if ds["0x00189018"].value == "YES":
-                variable_data['Scanning_Sequence'] = str(variable_data['Scanning_Sequence']) + "EPI "
+                ss_ary.append("EPI")
+        if len(ss_ary) > 0:
+            variable_data['Scanning_Sequence'] = " ".join(ss_ary)
 
         # Matrix
         row = ds["0x00280010"].value if "0x00280010" in ds else None
@@ -782,7 +763,7 @@ class BcilDcmConvert:
                 self.close("Error: Data is inaccurate and cannot be merged. Results are in " + self.work_path.subject_d)
             overwrite_mode = "append"
 
-        self.logger.info("Start: move subject " + "(" + overwrite_mode + ")" + self.work_path.subject_d + " > " + self.dst_path.subject_d)
+        self.logger.info("Start: move subject (" + overwrite_mode + ")" + self.work_path.subject_d + " > " + self.dst_path.subject_d)
 
         if overwrite_mode == "append":
             # ワークフォルダ内を更新する

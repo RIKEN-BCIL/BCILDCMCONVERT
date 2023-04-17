@@ -3,360 +3,381 @@
 import warnings
 import re
 import decimal
-from typing import Optional
+from typing import Optional, NoReturn, Union
 import pydicom
+import os
+from pydicom.errors import InvalidDicomError
+from collections import namedtuple
+import bcil_dcm_convert_logger
 
 
 class BcilDcmKspaceInfo:
 
-    __mri_identifier = ""
+    path: Optional[str] = None
+    ds: Optional[pydicom.dataset.FileDataset] = None
+    input: Optional[tuple] = None
+    output: Optional[tuple] = None
+    ascii_data = None
+    mri_identifier = None
 
-    __real_dwell_time = None
-    __acquisition_matrix_text = None
-    __bandwidth_per_pixel_phase_encode = None
-    __phase_encoding_direction_positive = None
-    __coil_for_gradient2 = None
+    input_keys: list = [
+        "real_dwell_time",
+        "acquisition_matrix_text",
+        "bandwidth_per_pixel_phase_encode",
+        "phase_encoding_direction_positive",
+        "gradient",
+        "parallel_factor",
+        "multiband_factor",
+        "system",
+        "fl_reference_amplitude",
+        "uc_flip_angle_mode",
+        "phase_partial_fourier",
+        "slice_partial_fourier",
+        "in_plane_phase_encodeing_direction",
+        "image_orientation_patient",
+    ]
+    output_keys: list = [
+        "mri_identifier",
+        "gradient",
+        "system",
+        "dwelltime_read",
+        "dwelltime_phase",
+        "read_direction",
+        "phase_direction",
+        "slice_direction",
+        "fl_reference_amplitude",
+        "parallel_factor",
+        "multiband_factor",
+        "uc_flip_angle_mode",  # extended only
+        "phase_partial_fourier",
+        "slice_partial_fourier",
+    ]
 
-    __ascii_data = None
+    def __init__(self, file_path: str):
 
-    __parallel_factor = None
-    __multiband_factor = None
-    __system = None
-    __fl_reference_amplitude = None
+        self.path = str(os.path.abspath(file_path))
+        if os.path.exists(self.path) and os.path.isfile(self.path):
+            try:
+                self.ds = pydicom.read_file(self.path)
+            except Exception as e:
+                print(self.path + " failre. " + str(e))
+                exit(1)
 
-    __uc_flip_angle_mode = None
-    __phase_partial_fourier = None
-    __slice_partial_fourier = None
+        # console logger
+        self.logger = bcil_dcm_convert_logger.get_stream_logger(
+            identifier=bcil_dcm_convert_logger.get_random_id("", 15), name="bcil_dcm_kspace_info")
 
-    __in_plane_phase_encodeing_direction = None
-    __image_orientation_patient = None
+    def setup_file_logger(self, file_log_path) -> NoReturn:
+        self.logger = bcil_dcm_convert_logger.disposal_logger(self.logger)  # console logger clear
+        # file logger
+        self.logger = bcil_dcm_convert_logger.get_file_logger(
+            path=file_log_path, identifier=bcil_dcm_convert_logger.get_random_id("", 15), name="bcil_dcm_kspace_info")
+        self.logger.info("bcil_dcm_kspace_info.py file=" + self.path)
 
-    __partial_fourier_dict = {
-        "16": "OFF",
-        "8": " 7/8",
-        "4": " 6/8",
-        "2": " 5/8",
-        "1": " 4/8",
-    }
+    def main(self) -> NoReturn:
+        try:
+            if self.ds is None:
+                self.logger.critical("Error: invalid path." + self.path)
+                exit(1)
 
-    def __init__(self, dicom_ds: pydicom.dataset.FileDataset):
+            manufacturer = self.ds["0x00080070"].value if "0x00080070" in self.ds else None
+            if 'SIEMENS' not in manufacturer.upper():
+                # Siemensのみ対応
+                self.logger.error("Error: data is not from Siemens MRI")
+                exit(0)
 
-        self.ds = dicom_ds
-        self.errors = []
+            self.set_mri_identifier()
+            self.set_input_val()
+            self.gen_output_tuple()
 
-        manufacturer = self.ds["0x00080070"].value if "0x00080070" in self.ds else None
-        if 'SIEMENS' not in manufacturer.upper():
-            # Siemensのみ対応
-            self.errors.append("data is not from Siemens MRI")
-            return
+        except Exception as e:
+            self.logger.error(str(e))
+        finally:
+            self.logger = bcil_dcm_convert_logger.disposal_logger(self.logger)  # logger clear
 
-        # mriの種類
-        self.__mri_identifier = ""  # XA以外
+    def set_mri_identifier(self) -> NoReturn:
+        # mriの種類を判定する。
+        self.mri_identifier = ""  # XA以外
         if "SoftwareVersions" in self.ds and "XA" in self.ds.SoftwareVersions:
             if "MediaStorageSOPClassUID" in self.ds.file_meta:
                 if self.ds.file_meta.MediaStorageSOPClassUID == "1.2.840.10008.5.1.4.1.1.4.1":
-                    self.__mri_identifier = "extended"  # Enhanced MR Image IOD
-                    self.set_data_siemens_extended()
+                    self.mri_identifier = "extended"  # Enhanced MR Image IOD
                 elif self.ds.file_meta.MediaStorageSOPClassUID == "1.2.840.10008.5.1.4.1.1.4":
-                    self.__mri_identifier = "interoperatabillity"
-                    self.set_data_siemens_interoperatabillity()
+                    self.mri_identifier = "interoperatabillity"
                 elif self.ds.file_meta.MediaStorageSOPClassUID == "1.2.840.10008.5.1.4.1.1.4.3":
-                    self.__mri_identifier = "extended"  # Enhanced MR Color Image IOD
-                    self.set_data_siemens_extended()
-        if self.__mri_identifier == "":
-            self.set_data_siemens()
+                    self.mri_identifier = "extended"  # Enhanced MR Color Image IOD
 
-    def set_data_siemens(self):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            from nibabel.nicom.csareader import CSAReadError
-            import nibabel.nicom.csareader as c
-            try:
-                csa_img_data = c.get_csa_header(self.ds)
-                if csa_img_data:
-                    self.__real_dwell_time = c.get_scalar(csa_img_data, "RealDwellTime")
-                    self.__acquisition_matrix_text = c.get_acq_mat_txt(csa_img_data)
-                    self.__bandwidth_per_pixel_phase_encode = c.get_scalar(csa_img_data, "BandwidthPerPixelPhaseEncode")
-                    self.__phase_encoding_direction_positive = c.get_scalar(csa_img_data, "PhaseEncodingDirectionPositive")
+    def set_input_val(self) -> NoReturn:
+        bcil_kspace_info_input = namedtuple("bcil_kspace_info_input", " ".join(self.input_keys))
 
-                csa_srs_data = c.get_csa_header(self.ds, 'series')
-                if csa_srs_data:
-                    self.__coil_for_gradient2 = c.get_scalar(csa_srs_data, "CoilForGradient2")
+        if self.mri_identifier == "extended":
+            self.set_ascii_txt(["0x52009229", "0x002110fe", "0x00211019"])
 
-                if "0x00291020" not in self.ds:
-                    self.errors.append("0x00291020 (### ASCCONV ###)" + " value not found")
-                else:
-                    self.__ascii_data = self.get_ascii_data(str(self.ds["0x00291020"].value))
-                    if self.__ascii_data is not None:
-                        if "sKSpace.ucPhasePartialFourier" in self.__ascii_data:
-                            self.__phase_partial_fourier = self.__ascii_data["sKSpace.ucPhasePartialFourier"]
-                        if "sKSpace.ucSlicePartialFourier" in self.__ascii_data:
-                            self.__slice_partial_fourier = self.__ascii_data["sKSpace.ucSlicePartialFourier"]
-                        if "sPat.lAccelFactPE" in self.__ascii_data:
-                            self.__parallel_factor = self.__ascii_data["sPat.lAccelFactPE"]
-                        if "sWipMemBlock.alFree[13]" in self.__ascii_data:
-                            self.__multiband_factor = self.__ascii_data["sWipMemBlock.alFree[13]"]
-                        if "sProtConsistencyInfo.tBaselineString" in self.__ascii_data:
-                            self.__system = self.__ascii_data["sProtConsistencyInfo.tBaselineString"]
-                        if "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude" in self.__ascii_data:
-                            self.__fl_reference_amplitude = self.__ascii_data["sTXSPEC.asNucleusInfo[0].flReferenceAmplitude"]
+            real_dwell_time = self.get_ascii_val("real_dwell_time", "sRXSPEC.alDwellTime[0]")
+            acquisition_matrix_text = \
+                self.get_ds_val("acquisition_matrix_text", ["0x52009230", "0x002111fe", "0x00211158"])
+            bandwidth_per_pixel_phase_encode = \
+                self.get_ds_val("bandwidth_per_pixel_phase_encode", ["0x52009230", "0x002111fe", "0x00211153"])
+            phase_encoding_direction_positive = \
+                self.get_ds_val("phase_encoding_direction_positive", ["0x52009230", "0x002111fe", "0x0021111c"])
+            gradient = self.get_ds_val("gradient", ["0x52009229", "0x002110fe", "0x00211033"])
 
-            except CSAReadError:
-                self.errors.append("CSA Header Info: acquisition error")
-                return
+            parallel_factor = self.get_ascii_val("parallel_factor", "sPat.lAccelFactPE")
+            multiband_factor = self.get_ascii_val("multiband_factor", "sWipMemBlock.alFree[13]")
+            system = self.get_ds_val("system", ["SoftwareVersions"])
+            fl_reference_amplitude = \
+                self.get_ascii_val("fl_reference_amplitude", "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude")
+            uc_flip_angle_mode = self.get_ascii_val("uc_flip_angle_mode", "ucFlipAngleMode")
+            phase_partial_fourier = self.get_ascii_val("phase_partial_fourier", "sKSpace.ucPhasePartialFourier")
+            slice_partial_fourier = self.get_ascii_val("slice_partial_fourier", "sKSpace.ucSlicePartialFourier")
+            in_plane_phase_encodeing_direction = \
+                self.get_ds_val("in_plane_phase_encodeing_direction", ["0x52009229", "0x00189125", "0x00181312"])
+            image_orientation_patient = \
+                self.get_ds_val("image_orientation_patient", ["0x52009230", "0x00209116", "0x00200037"], "list")
 
-        if "InPlanePhaseEncodingDirection" in self.ds:
-            self.__in_plane_phase_encodeing_direction = self.ds.InPlanePhaseEncodingDirection
-        if "ImageOrientationPatient" in self.ds:
-            self.__image_orientation_patient = self.ds.ImageOrientationPatient
+        elif self.mri_identifier == "interoperatabillity":
+            self.set_ascii_txt(["0x00211019"])
 
-    def set_data_siemens_vida(self):
-        self.__real_dwell_time = self.ds["0x00211142"].value if "0x00211142" in self.ds else None
-        self.__acquisition_matrix_text = self.ds["0x00211158"].value if "0x00211158" in self.ds else None
-        self.__bandwidth_per_pixel_phase_encode = self.ds["0x00211153"].value if "0x00211153" in self.ds else None
-        self.__phase_encoding_direction_positive = self.ds["0x0021111c"].value if "0x0021111c" in self.ds else None
+            real_dwell_time = self.get_ds_val("real_dwell_time", ["0x00211142"])
+            acquisition_matrix_text = self.get_ds_val("acquisition_matrix_text", ["0x00211158"])
+            bandwidth_per_pixel_phase_encode = self.get_ds_val("bandwidth_per_pixel_phase_encode", ["0x00211153"])
+            phase_encoding_direction_positive = self.get_ds_val("phase_encoding_direction_positive", ["0x0021111c"])
+            gradient = self.get_ds_val("gradient", ["0x00211033"])
 
-        self.__coil_for_gradient2 = self.ds["0x00211033"].value if "0x00211033" in self.ds else None
+            parallel_factor = self.get_ascii_val("parallel_factor", "sPat.lAccelFactPE")
+            multiband_factor = self.get_ds_val("multiband_factor", ["0x00211156"])
+            system = self.get_ds_val("system", ["SoftwareVersions"])
+            fl_reference_amplitude = \
+                self.get_ascii_val("fl_reference_amplitude", "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude")
+            uc_flip_angle_mode = self.get_ascii_val("uc_flip_angle_mode", "ucFlipAngleMode")
+            phase_partial_fourier = self.get_ascii_val("phase_partial_fourier", "sKSpace.ucPhasePartialFourier")
+            slice_partial_fourier = self.get_ascii_val("slice_partial_fourier", "sKSpace.ucSlicePartialFourier")
+            in_plane_phase_encodeing_direction = \
+                self.get_ds_val("in_plane_phase_encodeing_direction", ["InPlanePhaseEncodingDirection"])
+            image_orientation_patient = \
+                self.get_ds_val("image_orientation_patient", ["ImageOrientationPatient"], "list")
 
-        self.__multiband_factor = self.ds["0x00211156"].value if "0x00211156" in self.ds else None
-        self.__system = self.ds.SoftwareVersions
-
-        self.__in_plane_phase_encodeing_direction = self.ds.InPlanePhaseEncodingDirection
-        self.__image_orientation_patient = self.ds.ImageOrientationPatient
-
-        if "0x00211019" not in self.ds:
-            self.errors.append("0x00211019 (### ASCCONV ###)" + " value not found")
         else:
-            self.__ascii_data = self.get_ascii_data(str(self.ds["0x00211019"].value))
-            if self.__ascii_data is not None:
-                if "sPat.lAccelFactPE" in self.__ascii_data:
-                    self.__parallel_factor = self.__ascii_data["sPat.lAccelFactPE"]
-                if "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude" in self.__ascii_data:
-                    self.__fl_reference_amplitude = self.__ascii_data["sTXSPEC.asNucleusInfo[0].flReferenceAmplitude"]
+            self.set_ascii_txt(["0x00291020"])
 
-    def set_data_siemens_extended(self):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from nibabel.nicom.csareader import CSAReadError
+                import nibabel.nicom.csareader as c
+                try:
+                    err_str = "Warning: not found {}. no {}: {}"
+                    csa_img_data = c.get_csa_header(self.ds)
+                    if csa_img_data:
+                        real_dwell_time = c.get_scalar(csa_img_data, "RealDwellTime")
+                        if real_dwell_time is None:
+                            self.logger.warning(err_str.format("real_dwell_time", "RealDwellTime", "csa_img_data"))
 
-        self.__system = self.ds.SoftwareVersions
+                        acquisition_matrix_text = c.get_acq_mat_txt(csa_img_data)
+                        if acquisition_matrix_text is None:
+                            self.logger.warning(err_str.format("acquisition_matrix_text", "AcquisitionMatrixText", "csa_img_data"))
 
-        if "0x52009230" in self.ds:
-            csa9230 = self.ds["0x52009230"].value[0]
-            if "0x002111fe" in csa9230:
-                hdr002111fe = csa9230["0x002111fe"].value[0]
-                self.__phase_encoding_direction_positive = hdr002111fe["0x0021111c"].value if "0x0021111c" in hdr002111fe else None
-                self.__acquisition_matrix_text = hdr002111fe["0x00211158"].value if "0x00211158" in hdr002111fe else None
-                self.__bandwidth_per_pixel_phase_encode = hdr002111fe["0x00211153"].value if "0x00211153" in hdr002111fe else None
+                        bandwidth_per_pixel_phase_encode = c.get_scalar(csa_img_data, "BandwidthPerPixelPhaseEncode")
+                        if bandwidth_per_pixel_phase_encode is None:
+                            self.logger.warning(err_str.format("bandwidth_per_pixel_phase_encode", "BandwidthPerPixelPhaseEncode", "csa_img_data"))
 
-            if "0x00209116" in csa9230:
-                hdr00209116 = csa9230["0x00209116"].value[0]
-                self.__image_orientation_patient = hdr00209116["0x00200037"].value if "0x00200037" in hdr00209116 else None
+                        phase_encoding_direction_positive = c.get_scalar(csa_img_data, "PhaseEncodingDirectionPositive")
+                        if phase_encoding_direction_positive is None:
+                            self.logger.warning(err_str.format("phase_encoding_direction_positive", "PhaseEncodingDirectionPositive", "csa_img_data"))
+                    else:
+                        self.logger.warning(
+                            "Warning: not found csa_img_data. cannot get real_dwell_time, acquisition_matrix_text, "
+                            "bandwidth_per_pixel_phase_encode, phase_encoding_direction_positive")
 
-        if "0x52009229" in self.ds:
-            csa9229 = self.ds["0x52009229"].value[0]
-            if "0x00189125" in csa9229:
-                hdr00189125 = csa9229["0x00189125"].value[0]
-                self.__in_plane_phase_encodeing_direction = hdr00189125["0x00181312"].value if "0x00181312" in hdr00189125 else None
+                    csa_srs_data = c.get_csa_header(self.ds, 'series')
+                    if csa_srs_data:
+                        gradient = c.get_scalar(csa_srs_data, "CoilForGradient2")
+                        if gradient is None:
+                            self.logger.warning(err_str.format("gradient", "CoilForGradient2", "csa_srs_data"))
+                    else:
+                        self.logger.warning("Warning: not found csa_srs_data. cannot get gradient")
 
-            if "0x002110fe" in csa9229:
-                hdr002110fe = csa9229["0x002110fe"].value[0]
-                self.__coil_for_gradient2 = hdr002110fe["0x00211033"].value if "0x00211033" in hdr002110fe else None
-                if "0x00211019" in hdr002110fe:
-                    self.__ascii_data = self.get_ascii_data(str(hdr002110fe["0x00211019"].value))
-                    if self.__ascii_data is not None:
-                        self.__real_dwell_time = self.__ascii_data["sRXSPEC.alDwellTime[0]"]
-                        self.__multiband_factor = self.__ascii_data["sWipMemBlock.alFree[13]"] if "sWipMemBlock.alFree[13]" in self.__ascii_data else None
-                        if "sPat.lAccelFactPE" in self.__ascii_data:
-                            self.__parallel_factor = self.__ascii_data["sPat.lAccelFactPE"]
-                        if "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude" in self.__ascii_data:
-                            self.__fl_reference_amplitude = self.__ascii_data["sTXSPEC.asNucleusInfo[0].flReferenceAmplitude"]
-                        if "ucFlipAngleMode" in self.__ascii_data:
-                            self.__uc_flip_angle_mode = self.__ascii_data["ucFlipAngleMode"]
-                        if "sKSpace.ucPhasePartialFourier" in self.__ascii_data:
-                            self.__phase_partial_fourier = self.__ascii_data["sKSpace.ucPhasePartialFourier"]
-                        if "sKSpace.ucSlicePartialFourier" in self.__ascii_data:
-                            self.__slice_partial_fourier = self.__ascii_data["sKSpace.ucSlicePartialFourier"]
+                except CSAReadError as e:
+                    self.logger.error("Error: CSAReadError, " + str(e))
+                    exit(1)
+
+                parallel_factor = self.get_ascii_val("parallel_factor", "sPat.lAccelFactPE")
+                multiband_factor = self.get_ascii_val("multiband_factor", "sWipMemBlock.alFree[13]")
+                system = self.get_ascii_val("system", "sProtConsistencyInfo.tBaselineString")
+                fl_reference_amplitude = \
+                    self.get_ascii_val("fl_reference_amplitude", "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude")
+                uc_flip_angle_mode = None
+                phase_partial_fourier = self.get_ascii_val("phase_partial_fourier", "sKSpace.ucPhasePartialFourier")
+                slice_partial_fourier = self.get_ascii_val("slice_partial_fourier", "sKSpace.ucSlicePartialFourier")
+                in_plane_phase_encodeing_direction = \
+                    self.get_ds_val("in_plane_phase_encodeing_direction", ["InPlanePhaseEncodingDirection"])
+                image_orientation_patient = \
+                    self.get_ds_val("image_orientation_patient", ["ImageOrientationPatient"], "list")
+
+        self.input = bcil_kspace_info_input(
+            real_dwell_time,
+            acquisition_matrix_text,
+            bandwidth_per_pixel_phase_encode,
+            phase_encoding_direction_positive,
+            gradient,
+            parallel_factor,
+            multiband_factor,
+            system,
+            fl_reference_amplitude,
+            uc_flip_angle_mode,
+            phase_partial_fourier,
+            slice_partial_fourier,
+            in_plane_phase_encodeing_direction,
+            image_orientation_patient
+        )
+
+    def get_ascii_val(self, name: str, key: str) -> Optional[str]:
+        if self.ascii_data is not None and key in self.ascii_data:
+            return str(self.ascii_data[key])
+        self.logger.warning("Warning: not found {}. no {} in ascii text.".format(name, key))
+        return None
+
+    def get_ds_val(self, name: str, keys: list, type_str: str = "str") -> Union[list, str]:
+        count = 1
+        t = self.ds.copy()
+        for key in keys:
+            if key in t:
+                if type(t[key].value) == pydicom.sequence.Sequence:
+                    t = t[key].value[0]
                 else:
-                    self.errors.append("52009229>002110fe>00211019(### ASCCONV ###) value not found")
-
-    def set_data_siemens_interoperatabillity(self):
-
-        self.__real_dwell_time = self.ds["0x00211142"].value if "0x00211142" in self.ds else None
-        self.__acquisition_matrix_text = self.ds["0x00211158"].value if "0x00211158" in self.ds else None
-        self.__bandwidth_per_pixel_phase_encode = self.ds["0x00211153"].value if "0x00211153" in self.ds else None
-        self.__phase_encoding_direction_positive = self.ds["0x0021111c"].value if "0x0021111c" in self.ds else None
-
-        self.__coil_for_gradient2 = self.ds["0x00211033"].value if "0x00211033" in self.ds else None
-
-        self.__multiband_factor = self.ds["0x00211156"].value if "0x00211156" in self.ds else None
-        self.__system = self.ds.SoftwareVersions
-
-        self.__in_plane_phase_encodeing_direction = self.ds.InPlanePhaseEncodingDirection
-        self.__image_orientation_patient = self.ds.ImageOrientationPatient
-
-        if "0x00211019" not in self.ds:
-            self.errors.append("0x00211019 (### ASCCONV ###)" + " value not found")
+                    t = t[key].value
+                count += 1
+            else:
+                search = list(map(
+                    lambda s: "(" + s[2:6] + "," + s[6:] + ")" if len(s) == 10 and s[:2] == "0x" else s, keys))
+                self.logger.warning("Warning: not found {}. no {} in dcm header .".format(name, "-".join(search)))
+                return None
+        if type_str == "list":
+            return list(t)
         else:
-            self.__ascii_data = self.get_ascii_data(str(self.ds["0x00211019"].value))
-            if self.__ascii_data is not None:
-                if "sPat.lAccelFactPE" in self.__ascii_data:
-                    self.__parallel_factor = self.__ascii_data["sPat.lAccelFactPE"]
-                if "sTXSPEC.asNucleusInfo[0].flReferenceAmplitude" in self.__ascii_data:
-                    self.__fl_reference_amplitude = self.__ascii_data["sTXSPEC.asNucleusInfo[0].flReferenceAmplitude"]
-                if "ucFlipAngleMode" in self.__ascii_data:
-                    self.__uc_flip_angle_mode = self.__ascii_data["ucFlipAngleMode"]
-                if "sKSpace.ucPhasePartialFourier" in self.__ascii_data:
-                    self.__phase_partial_fourier = self.__ascii_data["sKSpace.ucPhasePartialFourier"]
-                if "sKSpace.ucSlicePartialFourier" in self.__ascii_data:
-                    self.__slice_partial_fourier = self.__ascii_data["sKSpace.ucSlicePartialFourier"]
+            return str(t)
 
-    # output ###
-    def get_dwell_time_read(self) -> Optional[str]:
-        if self.__real_dwell_time is None:
-            self.errors.append("dwell_time_read: not found")
+    def gen_output_tuple(self) -> tuple:
+        bcil_kspace_info_output = namedtuple("bcil_kspace_info_output", " ".join(self.output_keys))
+
+        mri_identifier = self.mri_identifier
+
+        gradient = self.input.gradient
+        system = self.input.system
+        dwelltime_read = self.gen_dwell_time_read()
+        dwelltime_phase = self.gen_dwell_time_phase()
+
+        d = self.gen_directions()
+        read_direction = d["Read.direction"]
+        phase_direction = d["Phase.direction"]
+        slice_direction = d["Slice.direction"]
+
+        fl_reference_amplitude = self.input.fl_reference_amplitude
+        parallel_factor = self.input.parallel_factor
+        multiband_factor = self.input.multiband_factor
+        uc_flip_angle_mode = self.input.uc_flip_angle_mode
+        phase_partial_fourier = self.gen_partial_fourier("phase_partial_fourier", self.input.phase_partial_fourier)
+        slice_partial_fourier = self.gen_partial_fourier("slice_partial_fourier", self.input.slice_partial_fourier)
+
+        self.output = bcil_kspace_info_output(
+            mri_identifier,
+            gradient,
+            system,
+            dwelltime_read,
+            dwelltime_phase,
+            read_direction,
+            phase_direction,
+            slice_direction,
+            fl_reference_amplitude,
+            parallel_factor,
+            multiband_factor,
+            uc_flip_angle_mode,
+            phase_partial_fourier,
+            slice_partial_fourier,
+        )
+
+    def gen_dwell_time_read(self) -> str:
+        dtr = None
+        if self.input.real_dwell_time is None:
+            self.logger.warning("Warning: cannot get dwell_time_read. (required: real_dwell_time)")
             return None
-
-        dtr = str(decimal.Decimal(int(self.__real_dwell_time)) / decimal.Decimal(1000000000))
-        return dtr.rstrip('0')
-
-    def get_dwell_time_phase(self) -> Optional[str]:
-        if self.__acquisition_matrix_text is None:
-            self.errors.append("dwell_time_phase calc: AcquisitionMatrixText not found")
-            return None
-
-        if self.__bandwidth_per_pixel_phase_encode is None:
-            self.errors.append("dwell_time_phase calc: BandwidthPerPixelPhaseEncode not found")
-            return None
-
         try:
-            ast_num = self.__acquisition_matrix_text.find("*")
-            am_num = self.__acquisition_matrix_text[:ast_num].rstrip('p')
-            return str(1 / (float(self.__bandwidth_per_pixel_phase_encode) * float(am_num)))
+            dtr = str(decimal.Decimal(int(self.input.real_dwell_time)) / decimal.Decimal(1000000000))
+            dtr = dtr.rstrip('0')
+        except Exception as e:
+            self.logger.warning("Warning: cannot get dwell_time_read. " + str(e))
+        return dtr
+
+    def gen_dwell_time_phase(self) -> str:
+        dtp = None
+        err_str = "Warning: cannot get dwell_time_phase. "
+        if self.input.acquisition_matrix_text is None or self.input.bandwidth_per_pixel_phase_encode is None:
+            self.logger.warning(err_str + "(required: acquisition_matrix_text, bandwidth_per_pixel_phase_encode)")
+            return dtp
+        try:
+            ast_num = self.input.acquisition_matrix_text.find("*")
+            am_num = self.input.acquisition_matrix_text[:ast_num].rstrip('p')
+            dtp = str(1 / (float(self.input.bandwidth_per_pixel_phase_encode) * float(am_num)))
 
         except (ValueError, TypeError) as e:
-            self.errors.append("dwell_time_phase calc: " + e)
-            self.errors.append("dwell_time_phase calc: AcquisitionMatrixText: " + self.__acquisition_matrix_text)
-            self.errors.append(
-                "dwell_time_phase calc: BandwidthPerPixelPhaseEncode: " + self.__bandwidth_per_pixel_phase_encode)
-            return None
+            self.logger.error(err_str + str(e))
+            dtp = None
+        return dtp
 
-    def get_coil_for_gradient2(self) -> Optional[str]:
-        if self.__coil_for_gradient2 is None:
-            self.errors.append("coil_for_gradient2: not found")
-            return None
+    def gen_partial_fourier(self, name: str, val: Optional[str]) -> Optional[str]:
 
-        return self.__coil_for_gradient2
+        if val is None:
+            self.logger.warning("Warning: cannot get {}. no value.".format(name))
+            return
 
-    def get_parallel_factor(self) -> Optional[str]:
-        if self.__parallel_factor is None:
-            self.errors.append("parallel_factor: not found")
-            return None
+        partial_fourier_dict = {
+            "16": "OFF",
+            "8": " 7/8",
+            "4": " 6/8",
+            "2": " 5/8",
+            "1": " 4/8",
+        }
+        if val in partial_fourier_dict:
+            return partial_fourier_dict[val]
 
-        return self.__parallel_factor
+        self.logger.warning("Warning: cannot get {}. value invalid {}. (1 or 2 or 4 or 8 or 16 valid. )".format(name, val))
+        return None
 
-    def get_multiband_factor(self) -> Optional[str]:
-        if self.__multiband_factor is None:
-            self.errors.append("multiband_factor: not found")
-            return None
-
-        return self.__multiband_factor
-
-    def get_system(self) -> Optional[str]:
-        if self.__system is None:
-            self.errors.append("system: not found")
-            return None
-
-        return self.__system
-
-    def get_fl_reference_amplitude(self) -> Optional[str]:
-        if self.__fl_reference_amplitude is None:
-            self.errors.append("flReferenceAmplitude: not found")
-            return None
-        return self.__fl_reference_amplitude
-
-    def get_uc_flip_angle_mode(self) -> Optional[str]:
-        if self.__uc_flip_angle_mode is None:
-            self.errors.append("ucFlipAngleMode: not found")
-            return None
-        return self.__uc_flip_angle_mode
-
-    def get_phase_partial_fourier(self) -> Optional[str]:
-        if self.__phase_partial_fourier is None:
-            self.errors.append("phasePartialFourier: not found")
-            return None
-        if self.__phase_partial_fourier not in self.__partial_fourier_dict:
-            self.errors.append("phasePartialFourier: Value not registered in dict")
-            return None
-        return self.__partial_fourier_dict[self.__phase_partial_fourier]
-
-    def get_slice_partial_fourier(self) -> Optional[str]:
-        if self.__slice_partial_fourier is None:
-            self.errors.append("slicePartialFourier: not found")
-            return None
-        if self.__slice_partial_fourier not in self.__partial_fourier_dict:
-            self.errors.append("slicePartialFourier: Value not registered in dict")
-            return None
-        return self.__partial_fourier_dict[self.__slice_partial_fourier]
-
-    def get_ascii_data_val(self, key: str) -> Optional[str]:
-        if self.__ascii_data is not None and key in self.__ascii_data:
-            return self.__ascii_data[key]
-        else:
-            self.errors.append(key + "(ascii_data)): not found")
-
-    def get_ascii_data(self, raw_string: str) -> Optional[dict]:
-
-        m = re.findall(r"((### ASCCONV BEGIN)(.*?)(###\\n))(.*?)(\\n### ASCCONV END ###)", raw_string)
-        if len(m) == 0 or m[0][4] is None:
-            self.errors.append("ascconv: can not find")
-            return None
-
-        tmp = m[0]  # 1つめにHITしたものを利用します。
-        ascconv = re.sub(r'\\n', "\n", tmp[4], 0, re.MULTILINE)
-        ascconv = re.sub(r'\\t', "", ascconv, 0, re.MULTILINE)
-
-        result = {}
-        for line in ascconv.splitlines():
-            tmp = line.split(r"=")
-            if len(tmp) == 2:
-                result[tmp[0].strip(" ").strip('"')] = tmp[1].strip(" ").strip('"')
-        return result
-
-    def get_directions(self) -> dict:
+    def gen_directions(self) -> dict:
         res = {
             "Read.direction": None,
             "Phase.direction": None,
             "Slice.direction": None,
         }
 
+        err_str = "Warning: cannot get directions. "
+
         # check
-        if self.__in_plane_phase_encodeing_direction is None:
-            self.errors.append("directions calc: InPlanePhaseEncodingDirection : not found")
+        if self.input.in_plane_phase_encodeing_direction is None or self.input.image_orientation_patient is None or self.input.phase_encoding_direction_positive is None:
+            self.logger.warning(err_str + "(required: in_plane_phase_encodeing_direction, "
+                                          "image_orientation_patient, phase_encoding_direction_positive)")
             return res
 
-        if self.__image_orientation_patient is None:
-            self.errors.append("directions calc: ImageOrientationPatient : not found")
-            return res
-
-        if self.__phase_encoding_direction_positive is None:
-            self.errors.append("directions calc: phase_encoding_direction_positive : not found")
-            return res
-
-        if int(self.__phase_encoding_direction_positive) == 1:
+        if int(self.input.phase_encoding_direction_positive) == 1:
             l_phase_encoding_direction_sign = 1
-        elif int(self.__phase_encoding_direction_positive) == 0:
+        elif int(self.input.phase_encoding_direction_positive) == 0:
             l_phase_encoding_direction_sign = -1
         else:
-            self.errors.append("directions calc: phase_encoding_direction_positive :  value error")
+            self.logger.warning(
+                err_str + "phase_encoding_direction_positive value invalid, "
+                          "{} ( 1 or -1 or 0 is valid.)".format(self.input.phase_encoding_direction_positive))
             return res
 
         ###############################
         # phase direction
         ###############################
-        if self.__in_plane_phase_encodeing_direction == "ROW":
-            d_phase_encoding_vector = self.__image_orientation_patient[0:3]
-        elif self.__in_plane_phase_encodeing_direction == "COL" or self.__in_plane_phase_encodeing_direction[:3] == "COL":
-            d_phase_encoding_vector = self.__image_orientation_patient[3:6]
+        if self.input.in_plane_phase_encodeing_direction == "ROW":
+            d_phase_encoding_vector = self.input.image_orientation_patient[0:3]
+        elif self.input.in_plane_phase_encodeing_direction == "COL" or \
+                self.input.in_plane_phase_encodeing_direction[:3] == "COL":
+            d_phase_encoding_vector = self.input.image_orientation_patient[3:6]
         else:
-            self.errors.append("directions calc: ImageOrientationPatient unexpected value")
+            self.logger.warning(err_str + "image_orientation_patient value invalid, {} ( COL or ROW is valid.)".
+                                format(self.input.in_plane_phase_encodeing_direction))
             return res
 
         # abs
@@ -378,12 +399,12 @@ class BcilDcmKspaceInfo:
         # slice direction
         ###############################
         slice_ary = [
-            (self.__image_orientation_patient[1] * self.__image_orientation_patient[5]) -
-            (self.__image_orientation_patient[2] * self.__image_orientation_patient[4]),
-            (self.__image_orientation_patient[2] * self.__image_orientation_patient[3]) -
-            (self.__image_orientation_patient[0] * self.__image_orientation_patient[5]),
-            (self.__image_orientation_patient[0] * self.__image_orientation_patient[4]) -
-            (self.__image_orientation_patient[1] * self.__image_orientation_patient[3])
+            (self.input.image_orientation_patient[1] * self.input.image_orientation_patient[5]) -
+            (self.input.image_orientation_patient[2] * self.input.image_orientation_patient[4]),
+            (self.input.image_orientation_patient[2] * self.input.image_orientation_patient[3]) -
+            (self.input.image_orientation_patient[0] * self.input.image_orientation_patient[5]),
+            (self.input.image_orientation_patient[0] * self.input.image_orientation_patient[4]) -
+            (self.input.image_orientation_patient[1] * self.input.image_orientation_patient[3])
         ]
         abs_slice_ary = list(map(abs, slice_ary))
         max_abs_slice_val = max(abs_slice_ary)
@@ -425,55 +446,62 @@ class BcilDcmKspaceInfo:
             "Slice.direction": slice_dic[slice_index]["val"] or None,
         }
 
-    def get_mri_identifier(self) -> Optional[str]:
-        return self.__mri_identifier
+    def set_ascii_txt(self, place: list) -> NoReturn:
+
+        raw_string = self.get_ds_val("ascii_text", place)
+        if raw_string is not None:
+            try:
+                m = re.findall(r"((### ASCCONV BEGIN)(.*?)(###\\n))(.*?)(\\n### ASCCONV END ###)", raw_string)
+                if len(m) == 0 or m[0][4] is not None:
+
+                    tmp = m[0]  # 1つめにHITしたものを利用します。
+                    ascconv = re.sub(r'\\n', "\n", tmp[4], 0, re.MULTILINE)
+                    ascconv = re.sub(r'\\t', "", ascconv, 0, re.MULTILINE)
+
+                    result = {}
+                    for line in ascconv.splitlines():
+                        tmp = line.split(r"=")
+                        if len(tmp) == 2:
+                            result[tmp[0].strip(" ").strip('"')] = tmp[1].strip(" ").strip('"')
+                    self.ascii_data = result
+            except Exception as e:
+                self.logger.error("Error: cannot get ascii text. " + str(e))
 
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
-    import pydicom
-    import os
-    from pydicom.errors import InvalidDicomError
 
     usage = \
         "\n\n" \
-        "  ex). $ python3 bcil_dcm_kspace_info.py <DICOM full path>\n" \
+        "  ex). $ python3 bcil_dcm_kspace_info.py <DICOM path>\n" \
         "\n\n" \
         "".format(__file__)
     ap = ArgumentParser(usage=usage)
-    ap.add_argument('dicomFullPath', type=str)
+    ap.add_argument('dcm_path', type=str)
     args = ap.parse_args()
 
-    if not os.path.exists(args.dicomFullPath):
-        print(args.dicomFullPath + ' :not found')
-        exit()
-
-    if not os.path.isfile(args.dicomFullPath):
-        print(args.dicomFullPath + ' :not file')
-        exit()
-
     try:
-        dcm_ds = pydicom.read_file(args.dicomFullPath)
-        k = BcilDcmKspaceInfo(dcm_ds)
-        print(args.dicomFullPath)
-        print("{}: {}".format("Gradient", k.get_coil_for_gradient2() or "None"))
-        print("{}: {}".format("System", k.get_system() or "None"))
-        print("{}: {}".format("DwelltimeRead", k.get_dwell_time_read() or "None"))
-        print("{}: {}".format("DwelltimePhase", k.get_dwell_time_phase() or "None"))
-        directions = k.get_directions()
-        for key, val in directions.items():
-            print("{}: {}".format(key, val or "None"))
-        print("{}: {}".format("flReferenceAmplitude", k.get_fl_reference_amplitude() or "None"))
-        print("{}: {}".format("ParallelFactor", k.get_parallel_factor() or "None"))
-        print("{}: {}".format("MultibandFactor", k.get_multiband_factor() or "None"))
-        print("{}: {}".format("ucFlipAngleMode", k.get_uc_flip_angle_mode() or "None"))
-        print("{}: {}".format("PhasePartialFourier", k.get_phase_partial_fourier() or "None"))
-        print("{}: {}".format("SlicePartialFourier", k.get_slice_partial_fourier() or "None"))
+        k = BcilDcmKspaceInfo(args.dcm_path)
+        k.main()
 
-        if k.errors:
-            for val in k.errors:
-                print("  failure > " + val)
+        print(args.dcm_path)
+        print("{}: {}".format("mri_identifier", k.output.mri_identifier))
+        print("{}: {}".format("Gradient", k.output.gradient))
+        print("{}: {}".format("System", k.output.system))
+        print("{}: {}".format("DwelltimeRead", k.output.dwelltime_read))
+        print("{}: {}".format("DwelltimePhase", k.output.dwelltime_phase))
 
-    except InvalidDicomError:
-        print(args.dicomFullPath + ' :can not read file')
+        print("{}: {}".format("Read.direction", k.output.read_direction))
+        print("{}: {}".format("Phase.direction", k.output.phase_direction))
+        print("{}: {}".format("Slice.direction", k.output.slice_direction))
+
+        print("{}: {}".format("flReferenceAmplitude", k.output.fl_reference_amplitude))
+        print("{}: {}".format("ParallelFactor", k.output.parallel_factor))
+        print("{}: {}".format("MultibandFactor", k.output.multiband_factor))
+        print("{}: {}".format("ucFlipAngleMode", k.output.uc_flip_angle_mode))
+        print("{}: {}".format("PhasePartialFourier", k.output.phase_partial_fourier))
+        print("{}: {}".format("SlicePartialFourier", k.output.slice_partial_fourier))
+
+    except Exception as e:
+        print(str(e))
         exit()
