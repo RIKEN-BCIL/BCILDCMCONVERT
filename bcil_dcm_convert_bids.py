@@ -55,7 +55,6 @@ if __name__ == "__main__":
             create_nifti=True,
             subject_name=subject_name,
             overwrite=2,
-            display_progress=True,
             gz=True,
             working_folder=convert_save_dir,
         )
