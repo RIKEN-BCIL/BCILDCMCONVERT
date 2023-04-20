@@ -184,6 +184,7 @@ class BcilDcmKspaceInfo:
                         if phase_encoding_direction_positive is None:
                             self.logger.warning(err_str.format("phase_encoding_direction_positive", "PhaseEncodingDirectionPositive", "csa_img_data"))
                     else:
+                        real_dwell_time = acquisition_matrix_text = bandwidth_per_pixel_phase_encode = phase_encoding_direction_positive = None
                         self.logger.warning(
                             "Warning: not found csa_img_data. cannot get real_dwell_time, acquisition_matrix_text, "
                             "bandwidth_per_pixel_phase_encode, phase_encoding_direction_positive")
@@ -194,6 +195,7 @@ class BcilDcmKspaceInfo:
                         if gradient is None:
                             self.logger.warning(err_str.format("gradient", "CoilForGradient2", "csa_srs_data"))
                     else:
+                        gradient = None
                         self.logger.warning("Warning: not found csa_srs_data. cannot get gradient")
 
                 except CSAReadError as e:
