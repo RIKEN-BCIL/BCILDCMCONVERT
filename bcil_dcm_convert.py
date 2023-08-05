@@ -25,8 +25,8 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.1.1"
-    last_update: Final[str] = "20230405001"
+    __version__: Final[str] = "3.1.2"
+    last_update: Final[str] = "20230805001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
     DCM_2_NAMING_RULE: Final[str] = "%s_%d"
@@ -283,7 +283,7 @@ class BcilDcmConvert:
                     for root, dirs, files in os.walk(top=folder):
                         s_files = sorted(files)
                         for file in s_files:
-                            if file.endswith((".ima", ".dcm", ".dic", ".dc3", ".dicom")) \
+                            if file.endswith((".ima", ".dcm", ".dic", ".dc3", ".dicom", ".IMA", ".DCM", ".DIC", ".DC3", ".DICOM")) \
                                     or (file.isalnum() and len(file) == 8):  # 指定拡張子or拡張子なし8文字の英数ファイル名
                                 file_full_path = os.path.join(root, file)
                                 out_f.write(file_full_path + '\n')
