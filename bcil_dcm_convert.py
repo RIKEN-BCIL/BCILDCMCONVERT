@@ -25,8 +25,8 @@ class BcilDcmConvert:
 
     init_error = True
 
-    __version__: Final[str] = "3.1.2"
-    last_update: Final[str] = "20230805001"
+    __version__: Final[str] = "3.2.0"
+    last_update: Final[str] = "20240524001"
 
     DCM_2_NIIX_CMD: Final[str] = "dcm2niix"
     DCM_2_NAMING_RULE: Final[str] = "%s_%d"
@@ -345,7 +345,7 @@ class BcilDcmConvert:
                     (mri_identifier, gradient, system, dwelltime_read, dwelltime_phase,
                      read_direction, phase_direction, slice_direction, fl_reference_amplitude,
                      parallel_factor, multiband_factor, uc_flip_angle_mode, phase_partial_fourier,
-                     slice_partial_fourier,) = k.output
+                     slice_partial_fourier) = k.output
                     del k
 
                 # series
@@ -357,6 +357,10 @@ class BcilDcmConvert:
                     variable_data = self.get_variable_data_interoperatabillity(ds)
                 else:
                     variable_data = self.get_variable_data(ds)
+
+                image_type = ds["0x00080008"].value if "0x00080008" in ds else []
+                if mri_identifier == "extended":
+                    image_type = variable_data['Image Type']
 
                 self.series.add_row_dict({
                     "Series Number": series_number,
@@ -373,7 +377,7 @@ class BcilDcmConvert:
                     "Pixel size[mm]": variable_data['Pixel_size'],
                     "Slice thickness[mm]": variable_data['Slice_thickness'],
                     "Number of averages": variable_data['Number_of_averages'],
-                    "Image Type": ' '.join(map(str, ds["0x00080008"].value if "0x00080008" in ds else [])),
+                    "Image Type": ' '.join(map(str, image_type)),
                     "DwelltimeRead": dwelltime_read,
                     "DwelltimePhase": dwelltime_phase,
                     "Patient Position": patient_position,
@@ -498,6 +502,7 @@ class BcilDcmConvert:
             'Matrix': None,
             'Scanning_Sequence': None,
             'Pixel_size': None,
+            'Image Type': None
         }
         if "0x52009229" in ds:
             csa9229 = ds["0x52009229"].value[0]
@@ -522,6 +527,9 @@ class BcilDcmConvert:
             if "0x00189114" in csa9230:
                 hdr00189114 = csa9230["0x00189114"].value[0]
                 variable_data['TE'] = hdr00189114["0x00189082"].value if "0x00189082" in hdr00189114 else None
+            if "0x002111fe" in csa9230:
+                hdr002111fe = csa9230["0x002111fe"].value[0]
+                variable_data['Image Type'] = hdr002111fe["0x00211175"].value if "0x00211175" in hdr002111fe else None
 
         # Scanning Sequence
         ss_ary = []
